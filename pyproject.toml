@@ -1,0 +1,43 @@
+[build-system]
+requires = [
+    "cython >= 3.0.2",
+    "meson >= 1.2.3",
+    "meson-python >= 0.14.0",
+    "numpy>1,<2.1",
+]
+build-backend = "mesonpy"
+
+[project]
+name = "flacarray"
+version = "0.1"
+description = "FLAC Compression of Arrays"
+readme = "README.md"
+maintainers = [
+    { name = "Theodore Kisner", email = "tskisner.public@gmail.com" },
+]
+requires-python = ">=3.9"
+classifiers = [
+    "Development Status :: 3 - Alpha",
+    "License :: OSI Approved :: BSD License",
+    "Programming Language :: C",
+    "Programming Language :: Python",
+    "Programming Language :: Python :: 3",
+    "Programming Language :: Python :: 3.9",
+    "Programming Language :: Python :: 3.10",
+    "Programming Language :: Python :: 3.11",
+    "Programming Language :: Python :: 3.12",
+    "Programming Language :: Python :: 3.13",
+    "Topic :: Software Development :: Libraries",
+]
+
+[project.scripts]
+flacarray_benchmark = "flacarray.scripts:bench_cli"
+
+[project.urls]
+"Documentation" = "https://hpc4cmb.github.io/flacarray/"
+"Source" = "https://github.com/hpc4cmb/flacarray/"
+"Issue Tracker" = "https://github.com/hpc4cmb/flacarray/issues"
+
+[tool.meson-python.args]
+setup = ['-Doptimization=3']
+compile = ['-j2']

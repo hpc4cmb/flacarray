@@ -1,2 +1,3 @@
-# h5flac
-FLAC Compression of Data in HDF5
+# FLACArray
+
+FLAC Compression of Numpy Arrays.

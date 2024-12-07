@@ -1,0 +1,43 @@
+site_name: FLACArray
+
+theme:
+  name: "material"
+  features:
+    - navigation.expand
+    - navigation.path
+
+plugins:
+- search
+- mkdocstrings:
+    handlers:
+      python:
+        options:
+          docstring_style: google
+          show_root_heading: true
+          heading_level: 3
+          parameter_headings: false
+          show_object_full_path: false
+          show_symbol_type_heading: true
+          show_symbol_type_toc: true
+- mkdocs-jupyter
+   execute: true
+
+nav:
+  - Introduction: index.md
+  - Installation: install.md
+  - Tutorial: tutorial.ipynb
+  - Cook Book: cookbook.ipynb
+  - API Reference: reference.md
+  - Developer Notes: dev.md
+  - Source on GitHub: https://github.com/hpc4cmb/flacarray
+
+markdown_extensions:
+  - pymdownx.arithmatex:
+      generic: true
+  - admonition
+  - pymdownx.details
+  - pymdownx.superfences
+
+extra_javascript:
+  - javascripts/mathjax.js
+  - https://unpkg.com/mathjax@3/es5/tex-mml-chtml.js
