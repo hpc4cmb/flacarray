@@ -40,7 +40,7 @@ def benchmark(
 
     arr = create_fake_data(shape)
     shpstr = "-".join([f"{x}" for x in shape])
-    print(f"Running tests with shape {shape} ({arr.nbytes} bytes)", flush=True)
+    print(f"  Running tests with shape {shape} ({arr.nbytes} bytes)", flush=True)
 
     # Run HDF5 tests
 
@@ -179,6 +179,13 @@ def cli():
         default="(4,3,100000)",
         help="Data shape (as a string)",
     )
+    parser.add_argument(
+        "--use_threads",
+        required=False,
+        default=False,
+        action="store_true",
+        help="Use OpenMP threads",
+    )
     args = parser.parse_args()
 
     shape = eval(args.data_shape)
@@ -188,8 +195,9 @@ def cli():
     else:
         comm = None
 
+    print("Full Data Tests:", flush=True)
     out = os.path.join(args.out_dir, "full")
-    benchmark(shape, dir=out, mpi_comm=comm)
+    benchmark(shape, dir=out, use_threads=args.use_threads, mpi_comm=comm)
 
     # Now try with a keep mask and sample slice
     keep = np.zeros(shape[:-1], dtype=bool)
@@ -199,8 +207,16 @@ def cli():
     mid = shape[-1] // 2
     samp_slice = slice(mid - 50, mid + 50, 1)
 
+    print("Sliced Data Tests (100 samples from even stream indices):", flush=True)
     out = os.path.join(args.out_dir, "sliced")
-    benchmark(shape, dir=out, keep=keep, stream_slice=samp_slice, mpi_comm=comm)
+    benchmark(
+        shape,
+        dir=out,
+        keep=keep,
+        stream_slice=samp_slice,
+        use_threads=args.use_threads,
+        mpi_comm=comm,
+    )
 
 
 if __name__ == "__main__":

@@ -34,6 +34,10 @@ jobs:
             arch: x86_64
             python: 312
             builder: manylinux
+          - os: ubuntu-latest
+            arch: x86_64
+            python: 313
+            builder: manylinux
 
           # MacOS x86_64.  The macos-13 runner is the last
           # Intel-based runner version.  At some point we'll
@@ -42,49 +46,50 @@ jobs:
             arch: x86_64
             python: 310
             builder: macosx
-            deploy: 13.0
           - os: macos-13
             arch: x86_64
             python: 311
             builder: macosx
-            deploy: 13.0
           - os: macos-13
             arch: x86_64
             python: 312
             builder: macosx
-            deploy: 13.0
+          - os: macos-13
+            arch: x86_64
+            python: 313
+            builder: macosx
 
           # MacOS arm64
           - os: macos-latest
             arch: arm64
             python: 310
             builder: macosx
-            deploy: 14.0
           - os: macos-latest
             arch: arm64
             python: 311
             builder: macosx
-            deploy: 14.0
           - os: macos-latest
             arch: arm64
             python: 312
             builder: macosx
-            deploy: 14.0
+          - os: macos-latest
+            arch: arm64
+            python: 313
+            builder: macosx
     env:
       CIBW_BUILD: cp${{ matrix.python }}-${{ matrix.builder }}_${{ matrix.arch }}
       CIBW_MANYLINUX_X86_64_IMAGE: ${{ matrix.builder }}2014
       CIBW_MANYLINUX_I686_IMAGE: ${{ matrix.builder }}2014
       CIBW_BUILD_VERBOSITY: 3
-      CIBW_ENVIRONMENT_LINUX:
+      CIBW_ENVIRONMENT_LINUX: >
+        CC=gcc
       CIBW_ENVIRONMENT_MACOS: >
-        MACOSX_DEPLOYMENT_TARGET=${{ matrix.deploy }}
+        CC=clang
       CIBW_BEFORE_BUILD_LINUX: ./packaging/wheels/install_deps_linux.sh
       CIBW_BEFORE_BUILD_MACOS: ./packaging/wheels/install_deps_osx.sh
+      CIBW_TEST_REQUIRES: h5py zarr
       CIBW_BEFORE_TEST: export OMP_NUM_THREADS=2
-      CIBW_TEST_COMMAND_LINUX: >
-        python -c 'import flacarray.tests; flacarray.tests.run()'
-      CIBW_TEST_COMMAND_MACOS: >
-        python -c 'import flacarray.tests; flacarray.tests.run()'
+      CIBW_TEST_COMMAND: python3 -c 'import flacarray.tests; flacarray.tests.run()'
     steps:
       - name: Checkout
         uses: actions/checkout@v4
@@ -92,11 +97,11 @@ jobs:
       - uses: actions/setup-python@v5
         name: Install Python
         with:
-          python-version: '3.10'
+          python-version: '3.11'
 
       - name: Install cibuildwheel
         run: |
-          python -m pip install cibuildwheel==2.20.0
+          python -m pip install cibuildwheel==2.22.0
 
       - name: Build wheel
         run: |

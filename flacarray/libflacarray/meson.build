@@ -15,10 +15,10 @@ ext_sources = [
 ]
 
 py.extension_module(
-  'libflacarray',
-  ext_sources,
-  dependencies: [openmp, libflac],
-  include_directories: [incdir_numpy],
-  install: true,
-  subdir: 'flacarray',
+    'libflacarray',
+    ext_sources,
+    dependencies: [openmp, libflac],
+    include_directories: [incdir_numpy],
+    install: true,
+    subdir: 'flacarray',
 )

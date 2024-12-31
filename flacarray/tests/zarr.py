@@ -10,7 +10,7 @@ import numpy as np
 
 from ..array import FlacArray
 from ..demo import create_fake_data
-from ..zarr import have_zarr, write_array, read_array
+from ..zarr import have_zarr, write_array, read_array, ZarrGroup
 from ..mpi import use_mpi, MPI
 
 if have_zarr:
@@ -38,16 +38,16 @@ class ZarrTest(unittest.TestCase):
         flatsize = np.prod(data_shape)
         rng = np.random.default_rng()
 
-        input32 = (
+        input32 = rng.integers(
+            low=-(2**29), high=2**29, size=flatsize, dtype=np.int32
+        ).reshape(data_shape)
+        check_i32 = None
+
+        input64 = (
             rng.integers(low=-(2**27), high=2**30, size=flatsize, dtype=np.int32)
             .reshape(data_shape)
             .astype(np.int64)
         )
-        check_i32 = None
-
-        input64 = rng.integers(
-            low=-(2**29), high=2**29, size=flatsize, dtype=np.int64
-        ).reshape(data_shape)
         check_i64 = None
 
         inputf32 = create_fake_data(data_shape, 1.0).astype(np.float32)
@@ -65,7 +65,7 @@ class ZarrTest(unittest.TestCase):
             tmppath = self.comm.bcast(tmppath, root=0)
 
         i32_file = os.path.join(tmppath, "data_i32.zarr")
-        with zarr.open_group(i32_file, mode="w") as zf:
+        with ZarrGroup(i32_file, mode="w", comm=self.comm) as zf:
             write_array(
                 input32,
                 zf,
@@ -73,8 +73,11 @@ class ZarrTest(unittest.TestCase):
                 quanta=None,
                 precision=None,
                 mpi_comm=self.comm,
+                use_threads=True,
             )
-        with zarr.open_group(i32_file, mode="r") as zf:
+        if self.comm is not None:
+            self.comm.barrier()
+        with ZarrGroup(i32_file, mode="r", comm=self.comm) as zf:
             check_i32 = read_array(
                 zf,
                 keep=None,
@@ -82,10 +85,11 @@ class ZarrTest(unittest.TestCase):
                 keep_indices=False,
                 mpi_comm=self.comm,
                 mpi_dist=None,
+                use_threads=True,
             )
 
         i64_file = os.path.join(tmppath, "data_i64.zarr")
-        with zarr.open_group(i64_file, mode="w") as zf:
+        with ZarrGroup(i64_file, mode="w", comm=self.comm) as zf:
             write_array(
                 input64,
                 zf,
@@ -93,8 +97,11 @@ class ZarrTest(unittest.TestCase):
                 quanta=None,
                 precision=None,
                 mpi_comm=self.comm,
+                use_threads=True,
             )
-        with zarr.open_group(i64_file, mode="r") as zf:
+        if self.comm is not None:
+            self.comm.barrier()
+        with ZarrGroup(i64_file, mode="r", comm=self.comm) as zf:
             check_i64 = read_array(
                 zf,
                 keep=None,
@@ -102,10 +109,11 @@ class ZarrTest(unittest.TestCase):
                 keep_indices=False,
                 mpi_comm=self.comm,
                 mpi_dist=None,
+                use_threads=True,
             )
 
         f32_file = os.path.join(tmppath, "data_f32.zarr")
-        with zarr.open_group(f32_file, mode="w") as zf:
+        with ZarrGroup(f32_file, mode="w", comm=self.comm) as zf:
             write_array(
                 inputf32,
                 zf,
@@ -113,8 +121,11 @@ class ZarrTest(unittest.TestCase):
                 quanta=None,
                 precision=None,
                 mpi_comm=self.comm,
+                use_threads=True,
             )
-        with zarr.open_group(f32_file, mode="r") as zf:
+        if self.comm is not None:
+            self.comm.barrier()
+        with ZarrGroup(f32_file, mode="r", comm=self.comm) as zf:
             check_f32 = read_array(
                 zf,
                 keep=None,
@@ -122,10 +133,11 @@ class ZarrTest(unittest.TestCase):
                 keep_indices=False,
                 mpi_comm=self.comm,
                 mpi_dist=None,
+                use_threads=True,
             )
 
         f64_file = os.path.join(tmppath, "data_f64.zarr")
-        with zarr.open_group(f64_file, mode="w") as zf:
+        with ZarrGroup(f64_file, mode="w", comm=self.comm) as zf:
             write_array(
                 inputf64,
                 zf,
@@ -133,8 +145,11 @@ class ZarrTest(unittest.TestCase):
                 quanta=None,
                 precision=None,
                 mpi_comm=self.comm,
+                use_threads=True,
             )
-        with zarr.open_group(f64_file, mode="r") as zf:
+        if self.comm is not None:
+            self.comm.barrier()
+        with ZarrGroup(f64_file, mode="r", comm=self.comm) as zf:
             check_f64 = read_array(
                 zf,
                 keep=None,
@@ -142,6 +157,7 @@ class ZarrTest(unittest.TestCase):
                 keep_indices=False,
                 mpi_comm=self.comm,
                 mpi_dist=None,
+                use_threads=True,
             )
 
         del tmppath
@@ -184,26 +200,26 @@ class ZarrTest(unittest.TestCase):
         flatsize = np.prod(data_shape)
         rng = np.random.default_rng()
 
-        input32 = (
+        input32 = rng.integers(
+            low=-(2**29), high=2**29, size=flatsize, dtype=np.int32
+        ).reshape(data_shape)
+        flcarr_i32 = FlacArray.from_array(input32, mpi_comm=self.comm, use_threads=True)
+        check_i32 = None
+
+        input64 = (
             rng.integers(low=-(2**27), high=2**30, size=flatsize, dtype=np.int32)
             .reshape(data_shape)
             .astype(np.int64)
         )
-        flcarr_i32 = FlacArray.from_array(input32)
-        check_i32 = None
-
-        input64 = rng.integers(
-            low=-(2**29), high=2**29, size=flatsize, dtype=np.int64
-        ).reshape(data_shape)
-        flcarr_i64 = FlacArray.from_array(input64)
+        flcarr_i64 = FlacArray.from_array(input64, mpi_comm=self.comm, use_threads=True)
         check_i64 = None
 
         inputf32 = create_fake_data(data_shape, 1.0).astype(np.float32)
-        flcarr_f32 = FlacArray.from_array(inputf32)
+        flcarr_f32 = FlacArray.from_array(inputf32, mpi_comm=self.comm)
         check_f32 = None
 
         inputf64 = create_fake_data(data_shape, 1.0)
-        flcarr_f64 = FlacArray.from_array(inputf64)
+        flcarr_f64 = FlacArray.from_array(inputf64, mpi_comm=self.comm, use_threads=True)
         check_f64 = None
 
         tmpdir = None
@@ -215,28 +231,36 @@ class ZarrTest(unittest.TestCase):
             tmppath = self.comm.bcast(tmppath, root=0)
 
         i32_file = os.path.join(tmppath, "data_i32.zarr")
-        with zarr.open_group(i32_file, mode="w") as zf:
+        with ZarrGroup(i32_file, mode="w", comm=self.comm) as zf:
             flcarr_i32.write_zarr(zf)
-        with zarr.open_group(i32_file, mode="r") as zf:
-            check_i32 = FlacArray.read_zarr(zf)
+        if self.comm is not None:
+            self.comm.barrier()
+        with ZarrGroup(i32_file, mode="r", comm=self.comm) as zf:
+            check_i32 = FlacArray.read_zarr(zf, mpi_comm=self.comm)
 
         i64_file = os.path.join(tmppath, "data_i64.zarr")
-        with zarr.open_group(i64_file, mode="w") as zf:
+        with ZarrGroup(i64_file, mode="w", comm=self.comm) as zf:
             flcarr_i64.write_zarr(zf)
-        with zarr.open_group(i64_file, mode="r") as zf:
-            check_i64 = FlacArray.read_zarr(zf)
+        if self.comm is not None:
+            self.comm.barrier()
+        with ZarrGroup(i64_file, mode="r", comm=self.comm) as zf:
+            check_i64 = FlacArray.read_zarr(zf, mpi_comm=self.comm)
 
         f32_file = os.path.join(tmppath, "data_f32.zarr")
-        with zarr.open_group(f32_file, mode="w") as zf:
+        with ZarrGroup(f32_file, mode="w", comm=self.comm) as zf:
             flcarr_f32.write_zarr(zf)
-        with zarr.open_group(f32_file, mode="r") as zf:
-            check_f32 = FlacArray.read_zarr(zf)
+        if self.comm is not None:
+            self.comm.barrier()
+        with ZarrGroup(f32_file, mode="r", comm=self.comm) as zf:
+            check_f32 = FlacArray.read_zarr(zf, mpi_comm=self.comm)
 
         f64_file = os.path.join(tmppath, "data_f64.zarr")
-        with zarr.open_group(f64_file, mode="w") as zf:
+        with ZarrGroup(f64_file, mode="w", comm=self.comm) as zf:
             flcarr_f64.write_zarr(zf)
-        with zarr.open_group(f64_file, mode="r") as zf:
-            check_f64 = FlacArray.read_zarr(zf)
+        if self.comm is not None:
+            self.comm.barrier()
+        with ZarrGroup(f64_file, mode="r", comm=self.comm) as zf:
+            check_f64 = FlacArray.read_zarr(zf, mpi_comm=self.comm)
 
         del tmppath
         del tmpdir

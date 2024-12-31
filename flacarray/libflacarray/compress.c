@@ -30,7 +30,7 @@ typedef struct {
 FLAC__StreamEncoderWriteStatus enc_write_callback(
     const FLAC__StreamEncoder * encoder,
     const FLAC__byte buffer[],
-    uint64_t bytes,
+    size_t bytes,
     uint32_t samples,
     uint32_t current_frame,
     void * client_data
@@ -85,7 +85,7 @@ FLAC__StreamEncoderWriteStatus enc_write_callback(
 FLAC__StreamEncoderWriteStatus enc_threaded_write_callback(
     const FLAC__StreamEncoder * encoder,
     const FLAC__byte buffer[],
-    uint64_t bytes,
+    size_t bytes,
     uint32_t samples,
     uint32_t current_frame,
     void * client_data

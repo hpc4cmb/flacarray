@@ -43,20 +43,16 @@ class ReaderZarr:
         dataset_comp,
         dataset_offsets,
         dataset_gains,
+        offsets_dtype,
+        gains_dtype,
     ):
         self._starts = dataset_starts
         self._nbytes = dataset_nbytes
         self._comp = dataset_comp
         self._offsets = dataset_offsets
         self._gains = dataset_gains
-        if dataset_offsets is None:
-            self._offsets_dtype = None
-        else:
-            self._offsets_dtype = np.dtype(dataset_offsets.dtype)
-        if dataset_gains is None:
-            self._gains_dtype = None
-        else:
-            self._gains_dtype = np.dtype(dataset_gains.dtype)
+        self._offsets_dtype = offsets_dtype
+        self._gains_dtype = gains_dtype
 
     @property
     def compressed_dataset(self):
@@ -132,6 +128,13 @@ def read_compressed(zgrp, keep=None, mpi_comm=None, mpi_dist=None):
     stream_off_dtype = None
     stream_gain_dtype = None
 
+    # Dataset handles (only valding on reading processes)
+    dstarts = None
+    dbytes = None
+    dsoff = None
+    dsgain = None
+    dcomp = None
+
     if rank == 0:
         # This process is participating.
         # Double check that we can load this format.
@@ -142,7 +145,7 @@ def read_compressed(zgrp, keep=None, mpi_comm=None, mpi_dist=None):
 
         # Get a handle to all the datasets, and extract some metadata.
         dstarts = zgrp[zarr_names["stream_starts"]]
-        stream_size = dstarts.attrs[zarr_names["stream_size"]]
+        stream_size = int(dstarts.attrs[zarr_names["stream_size"]])
         global_shape = dstarts.shape + (stream_size,)
         dbytes = zgrp[zarr_names["stream_bytes"]]
         dsoff = None
@@ -169,7 +172,9 @@ def read_compressed(zgrp, keep=None, mpi_comm=None, mpi_dist=None):
     mpi_dist = distribute_and_verify(mpi_comm, global_shape[0], mpi_dist=mpi_dist)
 
     # Use the common reader function
-    reader = ReaderZarr(dstarts, dbytes, dcomp, dsoff, dsgain)
+    reader = ReaderZarr(
+        dstarts, dbytes, dcomp, dsoff, dsgain, stream_off_dtype, stream_gain_dtype
+    )
     (
         local_shape,
         local_starts,

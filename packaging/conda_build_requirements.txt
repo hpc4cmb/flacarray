@@ -1,4 +1,5 @@
 c-compiler
+pkg-config
 cmake
 cython
 meson
@@ -6,3 +7,4 @@ meson-python
 libflac
 h5py
 zarr
+mpi4py

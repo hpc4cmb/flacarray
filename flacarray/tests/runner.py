@@ -5,6 +5,8 @@
 import sys
 import unittest
 
+from ..mpi import use_mpi, MPI
+
 from . import array as test_array
 from . import bindings as test_bindings
 from . import hdf5 as test_hdf5
@@ -41,6 +43,8 @@ def test(name=None):
     _ret = runner.run(suite)
     if not _ret.wasSuccessful():
         ret = 1
+        if use_mpi:
+            MPI.COMM_WORLD.Abort(6)
 
     if ret > 0:
         print("Some tests failed", flush=True)

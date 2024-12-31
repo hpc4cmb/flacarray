@@ -14,6 +14,10 @@ fi
 
 export PREFIX="${prefix}"
 
+# Make sure lib64 points to lib, so that our dependencies can be found
+sudo rm -rf "${prefix}/lib64"
+sudo ln -s "${PREFIX}/lib" "${PREFIX}/lib64"
+
 # If we are running on github CI, ensure that permissions
 # are set on /usr/local.  See:
 # https://github.com/actions/runner-images/issues/9272
@@ -118,6 +122,7 @@ tar xzf ${flac_pkg} \
     -DBUILD_EXAMPLES=OFF \
     -DBUILD_SHARED_LIBS=ON \
     -DINSTALL_MANPAGES=OFF \
+    -DENABLE_MULTITHREADING=ON \
     -DCMAKE_INSTALL_PREFIX="${PREFIX}" \
     .. \
     && make -j ${MAKEJ} install \
