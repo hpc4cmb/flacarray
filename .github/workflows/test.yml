@@ -1,0 +1,106 @@
+# In general, we try to run on:
+# - The oldest supported python
+# - The latest stable python that is the common default on most systems and conda
+# - (During transitions) The newly released bleeding edge python
+
+name:  Run Test Suite
+
+on:
+  push:
+    branches:
+      - main
+  pull_request:
+    branches:
+      - main
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  test:
+    name: Tests on ${{ matrix.arch }} with Conda Python-${{ matrix.python }}
+    runs-on: ${{ matrix.os }}
+    defaults:
+      run:
+        shell: bash -l {0}
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - os: ubuntu-latest
+            python: "3.9"
+            arch: Linux-x86_64
+            ompdisable: 0
+          - os: ubuntu-latest
+            python: "3.10"
+            arch: Linux-x86_64
+            ompdisable: 0
+          - os: ubuntu-latest
+            python: "3.12"
+            arch: Linux-x86_64
+            ompdisable: 0
+          - os: macos-latest
+            python: "3.10"
+            arch: MacOSX-x86_64
+            ompdisable: 1
+          - os: macos-latest
+            python: "3.12"
+            arch: MacOSX-x86_64
+            ompdisable: 1
+          - os: macos-latest
+            python: "3.10"
+            arch: MacOSX-arm64
+            ompdisable: 1
+          - os: macos-latest
+            python: "3.12"
+            arch: MacOSX-arm64
+            ompdisable: 1
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Conda Base
+        run: |
+          sudo rm -rf /usr/share/miniconda \
+            && sudo rm -rf /usr/local/miniconda \
+            && curl -SL -o miniforge.sh https://github.com/conda-forge/miniforge/releases/latest/download/Miniforge3-${{ matrix.arch }}.sh \
+            && bash miniforge.sh -b -f -p ~/conda \
+            && source ~/conda/etc/profile.d/conda.sh \
+            && conda activate base \
+            && conda update -n base --yes conda
+
+      - name: Check Conda Config
+        run: |
+          source ~/conda/etc/profile.d/conda.sh \
+            && conda activate base \
+            && conda info \
+            && conda list \
+            && conda config --show-sources \
+            && conda config --show
+
+      - name: Install Dependencies
+        run: |
+          source ~/conda/etc/profile.d/conda.sh \
+            && conda activate base \
+            && conda install --file packaging/conda_build_requirements.txt
+
+      - name: Install
+        run: |
+          source ~/conda/etc/profile.d/conda.sh \
+            && conda activate base \
+            && pip install .
+
+      - name: Run Serial Tests
+        run: |
+          source ~/conda/etc/profile.d/conda.sh \
+            && conda activate base \
+            && export OMP_NUM_THREADS=2 \
+            && python3 -c 'import flacarray.tests; flacarray.tests.run()'
+
+      - name: Run MPI Tests
+        run: |
+          source ~/conda/etc/profile.d/conda.sh \
+            && conda activate base \
+            && export OMP_NUM_THREADS=1 \
+            && mpirun -np 2 python -c 'import flacarray.tests; flacarray.tests.run()'
