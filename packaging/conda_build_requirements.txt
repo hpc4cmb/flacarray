@@ -1,4 +1,4 @@
-c_compiler
+c-compiler
 cmake
 cython
 meson
