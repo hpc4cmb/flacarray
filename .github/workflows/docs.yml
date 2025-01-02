@@ -73,7 +73,10 @@ jobs:
             && git config user.email 'github-actions[bot]@users.noreply.github.com'
 
       - name: Create Docs Cache ID
-        run: echo "cache_id=$(date --utc '+%V')" >> $GITHUB_ENV
+        run: |
+          source ~/conda/etc/profile.d/conda.sh \
+            && conda activate docs \
+            echo "cache_id=$(date --utc '+%V')" >> $GITHUB_ENV
 
       - name: Setup Docs Cache
         uses: actions/cache@v4
@@ -85,5 +88,7 @@ jobs:
 
       - name: Deploy Docs
         run: |
-          cd docs
-          mkdocs gh-deploy --force
+          source ~/conda/etc/profile.d/conda.sh \
+            && conda activate docs \
+            && cd docs \
+            && mkdocs gh-deploy --force
