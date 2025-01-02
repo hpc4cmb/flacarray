@@ -38,8 +38,11 @@ jobs:
             mkdocs-material-
 
       - name: Install Dependencies
+        # AttributeError: 'MathBlockParser' object has no attribute 'parse_axt_heading'
+        # https://github.com/jupyter/nbconvert/issues/2198
+        # mistune = "<3.1"
         run: |
-          pip install mkdocs mkdocstrings mkdocstrings-python mkdocs-material mkdocs-material-extensions mkdocs-jupyter
+          pip install mkdocs mkdocstrings mkdocstrings-python mkdocs-material mkdocs-material-extensions mkdocs-jupyter "mistune<3.1"
           git config user.name 'github-actions[bot]'
           git config user.email 'github-actions[bot]@users.noreply.github.com'
 

@@ -11,10 +11,6 @@ concurrency:
   group: ${{ github.workflow }}-${{ github.ref }}
   cancel-in-progress: true
 
-env:
-  TWINE_USERNAME: __token__
-  TWINE_PASSWORD: ${{ secrets.TWINE_TOKEN }}
-
 jobs:
   build_wheels:
     name: Build wheel for cp${{ matrix.python }}-${{ matrix.builder }}_${{ matrix.arch }}
@@ -115,22 +111,8 @@ jobs:
         run: |
           python -m cibuildwheel --output-dir wheelhouse
 
-  build_sdist:
-    name: Build source distribution
-    runs-on: ubuntu-latest
-    steps:
-      - uses: actions/checkout@v4
-
-      - name: Build sdist
-        run: pipx run build --sdist
-
-      - uses: actions/upload-artifact@v4
-        with:
-          name: flacarray-sdist
-          path: dist/*.tar.gz
-
   upload_pypi:
-    needs: [build_wheels, build_sdist]
+    needs: build_wheels
     runs-on: ubuntu-latest
     permissions:
       id-token: write
