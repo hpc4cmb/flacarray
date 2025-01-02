@@ -21,15 +21,43 @@ jobs:
       - name: Checkout
         uses: actions/checkout@v4
 
-      - name: Setup Python
-        uses: actions/setup-python@v5
-        with:
-          python-version: 3.x
+      - name: Setup Conda Base
+        run: |
+          sudo rm -rf /usr/share/miniconda \
+            && sudo rm -rf /usr/local/miniconda \
+            && curl -SL -o miniforge.sh https://github.com/conda-forge/miniforge/releases/latest/download/Miniforge3-Linux-x86_64.sh \
+            && bash miniforge.sh -b -f -p ~/conda \
+            && source ~/conda/etc/profile.d/conda.sh \
+            && conda activate base \
+            && conda update -n base --yes conda
 
-      - name: Create Cache ID
+      - name: Install Dependencies
+        run: |
+          source ~/conda/etc/profile.d/conda.sh \
+            && conda create --yes -n docs python==3.12 \
+            && conda activate docs \
+            && conda install --yes --file packaging/conda_build_requirements.txt
+
+      - name: Install Package
+        run: |
+          source ~/conda/etc/profile.d/conda.sh \
+            && conda activate docs \
+            && pip install .
+
+      - name: Run Serial Tests
+        run: |
+          source ~/conda/etc/profile.d/conda.sh \
+            && conda activate docs \
+            && export OMP_NUM_THREADS=1 \
+            && mkdir -p test \
+            && pushd test >/dev/null 2>&1 \
+            && python3 -c 'import flacarray.tests; flacarray.tests.run()' \
+            && popd >/dev/null 2>&1
+
+      - name: Create Docs Cache ID
         run: echo "cache_id=$(date --utc '+%V')" >> $GITHUB_ENV
 
-      - name: Setup Cache
+      - name: Setup Docs Cache
         uses: actions/cache@v4
         with:
           key: mkdocs-material-${{ env.cache_id }}
@@ -37,12 +65,12 @@ jobs:
           restore-keys: |
             mkdocs-material-
 
-      - name: Install Dependencies
+      - name: Install Docs Dependencies
         # AttributeError: 'MathBlockParser' object has no attribute 'parse_axt_heading'
         # https://github.com/jupyter/nbconvert/issues/2198
         # mistune = "<3.1"
         run: |
-          pip install mkdocs mkdocstrings mkdocstrings-python mkdocs-material mkdocs-material-extensions mkdocs-jupyter "mistune<3.1"
+          conda install --yes mkdocs mkdocstrings mkdocstrings-python mkdocs-material mkdocs-material-extensions mkdocs-jupyter "mistune<3.1"
           git config user.name 'github-actions[bot]'
           git config user.email 'github-actions[bot]@users.noreply.github.com'
 
