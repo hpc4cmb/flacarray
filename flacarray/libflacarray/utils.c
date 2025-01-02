@@ -239,10 +239,13 @@ int float32_to_int32(
         } else {
             // We are using a pre-defined quanta per stream.
             squanta = quanta[istream];
-            if (squanta < min_quanta) {
-                // The requested quanta is too small
-                return ERROR_CONVERT_TYPE;
-            }
+            // Commented out, since there might be times when the
+            // user wants to truncate the peaks of the data.
+            //-----------------------------------------------------
+            // if (squanta < min_quanta) {
+            //     // The requested quanta is too small
+            //     return ERROR_CONVERT_TYPE;
+            // }
         }
 
         if (squanta == 0) {
@@ -313,10 +316,13 @@ int float64_to_int32(
         } else {
             // We are using a pre-defined quanta per stream.
             squanta = quanta[istream];
-            if (squanta < min_quanta) {
-                // The requested quanta is too small
-                return ERROR_CONVERT_TYPE;
-            }
+            // Commented out, since there might be times when the
+            // user wants to truncate the peaks of the data.
+            //-----------------------------------------------------
+            // if (squanta < min_quanta) {
+            //     // The requested quanta is too small
+            //     return ERROR_CONVERT_TYPE;
+            // }
         }
 
         if (squanta == 0) {
