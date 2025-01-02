@@ -14,6 +14,6 @@ log_level = os.getenv("FLACARRAY_LOG_LEVEL", "INFO")
 # Set the log level
 logging.basicConfig(level=log_level)
 
-__version__ = "0.2.1"
+__version__ = "0.2.2"
 
 from .array import FlacArray
