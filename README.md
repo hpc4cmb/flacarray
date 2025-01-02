@@ -1,6 +1,6 @@
 # FLACArray
 
-![Build Status](https://github.com/hpc4cmb/flacarray/workflows/Run%20Test%20Suite/badge.svg?branch=main)
+[![Test Suite](https://github.com/hpc4cmb/flacarray/actions/workflows/test.yml/badge.svg)](https://github.com/hpc4cmb/flacarray/actions/workflows/test.yml)
 
 Tools for FLAC compression of numpy arrays in memory and support for several
 on-disk formats. This is intended for use with raw numerical data rather than
