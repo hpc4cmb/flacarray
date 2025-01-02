@@ -2,6 +2,5 @@ cmake
 cython
 meson
 meson-python
-libflac
 h5py
 zarr

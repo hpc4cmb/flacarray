@@ -14,6 +14,10 @@ fi
 
 export PREFIX="${prefix}"
 
+# Make sure lib64 points to lib, so that our dependencies can be found
+rm -rf "${prefix}/lib64"
+ln -s "${prefix}/lib" "${prefix}/lib64"
+
 # Location of this script
 pushd $(dirname $0) >/dev/null 2>&1
 scriptdir=$(pwd)
@@ -51,7 +55,7 @@ pyver=$(python3 --version 2>&1 | awk '{print $2}' | sed -e "s#\(.*\)\.\(.*\)\..*
 numpy_ver="2.0.1"
 
 # Install build requirements.
-CC="${CC}" CFLAGS="${CFLAGS}" pip install -v -r "${scriptdir}/build_requirements.txt" "numpy==${numpy_ver}"
+CC="${CC}" CFLAGS="${CFLAGS}" pip install -v -r "${scriptdir}/../pip_build_requirements.txt" "numpy==${numpy_ver}"
 
 # Build compiled dependencies
 
@@ -93,6 +97,7 @@ tar xzf ${flac_pkg} \
     -DBUILD_EXAMPLES=OFF \
     -DBUILD_SHARED_LIBS=ON \
     -DINSTALL_MANPAGES=OFF \
+    -DENABLE_MULTITHREADING=ON \
     -DCMAKE_INSTALL_PREFIX="${PREFIX}" \
     .. \
     && make -j ${MAKEJ} install \

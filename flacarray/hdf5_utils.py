@@ -41,7 +41,7 @@ def have_hdf5_parallel():
     try:
         with tempfile.TemporaryDirectory() as tempdir:
             tfile = os.path.join(tempdir, f"test_hdf5_mpio_{MPI.COMM_WORLD.rank}.h5")
-            with h5py.File(tempfile, "w", driver="mpio", comm=MPI.COMM_SELF) as f:
+            with h5py.File(tfile, "w", driver="mpio", comm=MPI.COMM_SELF) as f:
                 # Yay!
                 _hdf5_is_parallel = True
     except (ValueError, AssertionError, AttributeError) as e:

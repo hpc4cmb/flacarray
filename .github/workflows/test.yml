@@ -33,11 +33,11 @@ jobs:
             arch: Linux-x86_64
             ompdisable: 0
           - os: ubuntu-latest
-            python: "3.10"
+            python: "3.11"
             arch: Linux-x86_64
             ompdisable: 0
           - os: ubuntu-latest
-            python: "3.12"
+            python: "3.13"
             arch: Linux-x86_64
             ompdisable: 0
           - os: macos-latest
@@ -45,7 +45,7 @@ jobs:
             arch: MacOSX-x86_64
             ompdisable: 1
           - os: macos-latest
-            python: "3.12"
+            python: "3.13"
             arch: MacOSX-x86_64
             ompdisable: 1
           - os: macos-latest
@@ -53,7 +53,7 @@ jobs:
             arch: MacOSX-arm64
             ompdisable: 1
           - os: macos-latest
-            python: "3.12"
+            python: "3.13"
             arch: MacOSX-arm64
             ompdisable: 1
     steps:
@@ -82,25 +82,32 @@ jobs:
       - name: Install Dependencies
         run: |
           source ~/conda/etc/profile.d/conda.sh \
-            && conda activate base \
-            && conda install --file packaging/conda_build_requirements.txt
+            && conda create --yes -n test python==3.12 \
+            && conda activate test \
+            && conda install --yes --file packaging/conda_build_requirements.txt
 
       - name: Install
         run: |
           source ~/conda/etc/profile.d/conda.sh \
-            && conda activate base \
+            && conda activate test \
             && pip install .
 
       - name: Run Serial Tests
         run: |
           source ~/conda/etc/profile.d/conda.sh \
-            && conda activate base \
+            && conda activate test \
             && export OMP_NUM_THREADS=2 \
-            && python3 -c 'import flacarray.tests; flacarray.tests.run()'
+            && mkdir -p test \
+            && pushd test >/dev/null 2>&1 \
+            && python3 -c 'import flacarray.tests; flacarray.tests.run()' \
+            && popd >/dev/null 2>&1
 
       - name: Run MPI Tests
         run: |
           source ~/conda/etc/profile.d/conda.sh \
-            && conda activate base \
+            && conda activate test \
             && export OMP_NUM_THREADS=1 \
-            && mpirun -np 2 python -c 'import flacarray.tests; flacarray.tests.run()'
+            && mkdir -p test \
+            && pushd test >/dev/null 2>&1 \
+            && mpirun -np 2 python -m mpi4py -c 'import flacarray.tests; flacarray.tests.run()' \
+            && popd >/dev/null 2>&1

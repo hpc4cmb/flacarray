@@ -73,7 +73,9 @@ def distribute_and_verify(mpi_comm, n_elem, mpi_dist=None):
         # We are creating the distribution
         if mpi_comm is None:
             # One range
-            return [(0, n_elem),]
+            return [
+                (0, n_elem),
+            ]
         else:
             # Compute the mpi_dist- just uniform distribution
             chunks = np.split(np.arange(n_elem, dtype=np.int64), mpi_comm.size)

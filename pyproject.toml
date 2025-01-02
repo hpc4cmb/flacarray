@@ -3,19 +3,22 @@ requires = [
     "cython >= 3.0.2",
     "meson >= 1.2.3",
     "meson-python >= 0.14.0",
-    "numpy>1,<2.1",
+    "numpy",
 ]
 build-backend = "mesonpy"
 
 [project]
 name = "flacarray"
-version = "0.1"
+version = "0.2.0"
 description = "FLAC Compression of Arrays"
 readme = "README.md"
 maintainers = [
     { name = "Theodore Kisner", email = "tskisner.public@gmail.com" },
 ]
 requires-python = ">=3.9"
+dependencies = [
+  "numpy",
+]
 classifiers = [
     "Development Status :: 3 - Alpha",
     "License :: OSI Approved :: BSD License",
@@ -39,5 +42,4 @@ flacarray_benchmark = "flacarray.scripts:bench_cli"
 "Issue Tracker" = "https://github.com/hpc4cmb/flacarray/issues"
 
 [tool.meson-python.args]
-setup = ['-Doptimization=3']
 compile = ['-j2']

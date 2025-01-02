@@ -19,8 +19,8 @@ plugins:
           show_object_full_path: false
           show_symbol_type_heading: true
           show_symbol_type_toc: true
-- mkdocs-jupyter
-   execute: true
+- mkdocs-jupyter:
+    execute: false
 
 nav:
   - Introduction: index.md

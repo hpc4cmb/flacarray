@@ -46,20 +46,16 @@ class ReaderHDF5:
         dataset_comp,
         dataset_offsets,
         dataset_gains,
+        offsets_dtype,
+        gains_dtype,
     ):
         self._starts = dataset_starts
         self._nbytes = dataset_nbytes
         self._comp = dataset_comp
         self._offsets = dataset_offsets
         self._gains = dataset_gains
-        if dataset_offsets is None:
-            self._offsets_dtype = None
-        else:
-            self._offsets_dtype = np.dtype(dataset_offsets.dtype)
-        if dataset_gains is None:
-            self._gains_dtype = None
-        else:
-            self._gains_dtype = np.dtype(dataset_gains.dtype)
+        self._offsets_dtype = offsets_dtype
+        self._gains_dtype = gains_dtype
 
     @property
     def compressed_dataset(self):
@@ -157,7 +153,7 @@ def read_compressed(hgrp, keep=None, mpi_comm=None, mpi_dist=None):
 
         # Get a handle to all the datasets, and extract some metadata.
         dstarts = hgrp[hdf5_names["stream_starts"]]
-        stream_size = dstarts.attrs[hdf5_names["stream_size"]]
+        stream_size = int(dstarts.attrs[hdf5_names["stream_size"]])
         global_shape = dstarts.shape + (stream_size,)
         dbytes = hgrp[hdf5_names["stream_bytes"]]
         dsoff = None
@@ -195,7 +191,9 @@ def read_compressed(hgrp, keep=None, mpi_comm=None, mpi_dist=None):
 
     if use_serial:
         # Use the common function for reading data and communicating it.
-        reader = ReaderHDF5(dstarts, dbytes, dcomp, dsoff, dsgain)
+        reader = ReaderHDF5(
+            dstarts, dbytes, dcomp, dsoff, dsgain, stream_off_dtype, stream_gain_dtype
+        )
         (
             local_shape,
             local_starts,

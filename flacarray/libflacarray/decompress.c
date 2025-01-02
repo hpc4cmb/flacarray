@@ -2,8 +2,6 @@
 // All rights reserved.  Use of this source code is governed by
 // a BSD-style license that can be found in the LICENSE file.
 
-#include <stdbool.h>
-
 #include <FLAC/stream_decoder.h>
 
 #include "flacarray.h"
@@ -31,7 +29,7 @@ typedef struct {
 FLAC__StreamDecoderReadStatus dec_read_callback(
     const FLAC__StreamDecoder * decoder,
     FLAC__byte buffer[],
-    uint64_t * bytes,
+    size_t * bytes,
     void * client_data
 ) {
     dec_callback_data * callback_data = (dec_callback_data *)client_data;
@@ -124,12 +122,12 @@ void dec_err_callback(
     int64_t n_elem = callback_data->decomp_nelem;
     fprintf(
         stderr,
-        "FLAC decode error (%d) on stream %ld at bytes %ld - %ld, output size %ld\n",
+        "FLAC decode error (%d) on stream %lld at bytes %lld - %lld, output size %lld\n",
         status,
-        cur,
-        callback_data->stream_pos,
-        callback_data->stream_end,
-        n_elem
+        (long long int)cur,
+        (long long int)callback_data->stream_pos,
+        (long long int)callback_data->stream_end,
+        (long long int)n_elem
     );
     return;
 }

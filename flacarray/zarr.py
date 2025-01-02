@@ -28,6 +28,41 @@ from .mpi import global_array_properties, global_bytes
 from .utils import function_timer
 
 
+class ZarrGroup(object):
+    """Wrapper class containing an open Zarr Group.
+
+    The named object is a file opened in the specified mode on the root process.
+    On other processes the handle will be None.
+
+    Args:
+        name (str):  The filesystem path.
+        mode (str):  The opening mode.
+        comm (MPI.Comm):  The MPI communicator or None.
+
+    """
+    def __init__(self, name, mode, comm=None):
+        self.handle = None
+        if comm is None or comm.rank == 0:
+            self.handle = zarr.open_group(name, mode=mode)
+        if comm is not None:
+            comm.barrier()
+
+    def close(self):
+        if hasattr(self, "handle") and self.handle is not None:
+            self.handle.store.close()
+            del self.handle
+            self.handle = None
+
+    def __del__(self):
+        self.close()
+
+    def __enter__(self):
+        return self.handle
+
+    def __exit__(self, *args):
+        self.close()
+
+
 class WriterZarr:
     """Helper class for the common writer function."""
 
@@ -355,9 +390,16 @@ def read_compressed(zgrp, keep=None, mpi_comm=None, mpi_dist=None):
     """
     if not have_zarr:
         raise RuntimeError("zarr is not importable, cannot write to a Zarr Group")
-    if "flacarray_format_version" not in zgrp.attrs:
+
+    format_version = None
+    if zgrp is not None:
+        if "flacarray_format_version" in zgrp.attrs:
+            format_version = zgrp.attrs["flacarray_format_version"]
+    if mpi_comm is not None:
+        format_version = mpi_comm.bcast(format_version, root=0)
+    if format_version is None:
         raise RuntimeError("Zarr Group does not contain a FlacArray")
-    format_version = zgrp.attrs["flacarray_format_version"]
+
     mod_name = f".zarr_load_v{format_version}"
     mod = importlib.import_module(mod_name, package="flacarray")
     read_func = getattr(mod, "read_compressed")
@@ -422,9 +464,16 @@ def read_array(
     """
     if not have_zarr:
         raise RuntimeError("zarr is not importable, cannot write to a Zarr Group")
-    if "flacarray_format_version" not in zgrp.attrs:
-        raise RuntimeError("zarr Group does not contain a FlacArray")
-    format_version = zgrp.attrs["flacarray_format_version"]
+
+    format_version = None
+    if zgrp is not None:
+        if "flacarray_format_version" in zgrp.attrs:
+            format_version = zgrp.attrs["flacarray_format_version"]
+    if mpi_comm is not None:
+        format_version = mpi_comm.bcast(format_version, root=0)
+    if format_version is None:
+        raise RuntimeError("Zarr Group does not contain a FlacArray")
+
     mod_name = f".zarr_load_v{format_version}"
     mod = importlib.import_module(mod_name, package="flacarray")
     read_func = getattr(mod, "read_array")

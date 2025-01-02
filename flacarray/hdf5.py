@@ -394,9 +394,16 @@ def read_compressed(hgrp, keep=None, mpi_comm=None, mpi_dist=None):
     """
     if not have_hdf5:
         raise RuntimeError("h5py is not importable, cannot write to HDF5")
-    if "flacarray_format_version" not in hgrp.attrs:
+
+    format_version = None
+    if hgrp is not None:
+        if "flacarray_format_version" in hgrp.attrs:
+            format_version = hgrp.attrs["flacarray_format_version"]
+    if mpi_comm is not None:
+        format_version = mpi_comm.bcast(format_version, root=0)
+    if format_version is None:
         raise RuntimeError("h5py Group does not contain a FlacArray")
-    format_version = hgrp.attrs["flacarray_format_version"]
+
     mod_name = f".hdf5_load_v{format_version}"
     mod = importlib.import_module(mod_name, package="flacarray")
     read_func = getattr(mod, "read_compressed")
@@ -461,9 +468,16 @@ def read_array(
     """
     if not have_hdf5:
         raise RuntimeError("h5py is not importable, cannot write to HDF5")
-    if "flacarray_format_version" not in hgrp.attrs:
+
+    format_version = None
+    if hgrp is not None:
+        if "flacarray_format_version" in hgrp.attrs:
+            format_version = hgrp.attrs["flacarray_format_version"]
+    if mpi_comm is not None:
+        format_version = mpi_comm.bcast(format_version, root=0)
+    if format_version is None:
         raise RuntimeError("h5py Group does not contain a FlacArray")
-    format_version = hgrp.attrs["flacarray_format_version"]
+
     mod_name = f".hdf5_load_v{format_version}"
     mod = importlib.import_module(mod_name, package="flacarray")
     read_func = getattr(mod, "read_array")

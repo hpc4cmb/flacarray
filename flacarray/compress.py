@@ -60,12 +60,15 @@ def array_compress(arr, level=5, quanta=None, precision=None, use_threads=False)
         return (compressed, starts, nbytes, None, None)
     elif arr.dtype == np.dtype(np.int64):
         idata, ioff = int64_to_int32(arr)
-        (compressed, starts, nbytes) = encode_flac(idata, level, use_threads=use_threads)
+        (compressed, starts, nbytes) = encode_flac(
+            idata, level, use_threads=use_threads
+        )
         return (compressed, starts, nbytes, ioff, None)
     elif arr.dtype == np.dtype(np.float64) or arr.dtype == np.dtype(np.float32):
         idata, foff, gains = float_to_int32(arr, quanta=dquanta, precision=precision)
-        (compressed, starts, nbytes) = encode_flac(idata, level, use_threads=use_threads)
+        (compressed, starts, nbytes) = encode_flac(
+            idata, level, use_threads=use_threads
+        )
         return (compressed, starts, nbytes, foff, gains)
     else:
         raise ValueError(f"Unsupported data type '{arr.dtype}'")
-

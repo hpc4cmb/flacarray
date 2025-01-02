@@ -110,9 +110,7 @@ def check_requests(reqs, wait_all=False):
 
 
 @function_timer
-def read_send_compressed(
-    reader, global_shape, keep=None, mpi_comm=None, mpi_dist=None
-):
+def read_send_compressed(reader, global_shape, keep=None, mpi_comm=None, mpi_dist=None):
     """Read data on one process and distribute.
 
     Args:
@@ -197,7 +195,7 @@ def read_send_compressed(
                 # This rank has no data after masking
                 proc_shape = None
             else:
-                proc_shape = proc_starts.shape
+                proc_shape = tuple(proc_starts.shape)
 
             if proc == 0:
                 # Store local data
@@ -216,52 +214,52 @@ def read_send_compressed(
                     buffers.append(proc_offsets)
                 if proc_gains is not None:
                     buffers.append(proc_gains)
-                n_send = len(buffers) + 1
 
                 # Send two pieces of information needed to receiver further data.
                 requests[proc] = dict()
-                req = mpi_comm.isend(proc_shape, dest=proc, tag=(n_send * proc))
+                max_n_send = 7
+                tag_base = max_n_send * proc
+
+                req = mpi_comm.isend(proc_shape, dest=proc, tag=tag_base)
                 requests[proc][0] = (req, proc_shape)
-                req = mpi_comm.isend(
-                    proc_keep_indices, dest=proc, tag=(n_send * proc) + 1
-                )
+
+                req = mpi_comm.isend(proc_keep_indices, dest=proc, tag=tag_base + 1)
                 requests[proc][0] = (req, proc_keep_indices)
 
                 if proc_shape is not None:
                     # This process has some data
                     for itag, buf in enumerate(buffers):
-                        req = mpi_comm.Isend(
-                            buf, dest=proc, tag=(n_send * proc) + itag + 1
-                        )
+                        req = mpi_comm.Isend(buf, dest=proc, tag=tag_base + itag + 2)
                         requests[proc][itag] = (req, buf)
         elif proc == rank:
             # First receive the shape and keep indices, which may change depending on
             # keep mask.
-            n_recv = 7
-            proc_shape = mpi_comm.recv(src=0, tag=(n_recv * proc))
-            proc_keep_indices = mpi_comm.recv(src=0, tag=(n_recv * proc) + 1)
+            max_n_recv = 7
+            tag_base = max_n_recv * proc
+            proc_shape = mpi_comm.recv(source=0, tag=tag_base)
+            proc_keep_indices = mpi_comm.recv(source=0, tag=tag_base + 1)
             if proc_shape is not None:
                 # This process has some data
                 local_shape = proc_shape + (stream_size,)
                 keep_indices = proc_keep_indices
 
                 local_starts = np.empty(proc_shape, dtype=np.int64)
-                mpi_comm.Recv(local_starts, src=0, tag=(n_recv * proc) + 2)
+                mpi_comm.Recv(local_starts, source=0, tag=tag_base + 2)
 
                 stream_nbytes = np.empty(proc_shape, dtype=np.int64)
-                mpi_comm.Recv(stream_nbytes, src=0, tag=(n_recv * proc) + 3)
+                mpi_comm.Recv(stream_nbytes, source=0, tag=tag_base + 3)
 
                 total_bytes = np.sum(stream_nbytes)
                 compressed = np.empty(total_bytes, dtype=np.uint8)
-                mpi_comm.Recv(compressed, src=0, tag=(n_recv * proc) + 4)
+                mpi_comm.Recv(compressed, source=0, tag=tag_base + 4)
 
                 if reader.stream_off_dtype is not None:
                     stream_offsets = np.empty(proc_shape, dtype=reader.stream_off_dtype)
-                    mpi_comm.Recv(stream_offsets, src=0, tag=(n_recv * proc) + 5)
+                    mpi_comm.Recv(stream_offsets, source=0, tag=tag_base + 5)
 
                 if reader.stream_gain_dtype is not None:
                     stream_gains = np.empty(proc_shape, dtype=reader.stream_gain_dtype)
-                    mpi_comm.Recv(stream_gains, src=0, tag=(n_recv * proc) + 6)
+                    mpi_comm.Recv(stream_gains, source=0, tag=tag_base + 6)
     check_requests(requests, wait_all=True)
 
     return (
@@ -342,9 +340,7 @@ def receive_write_compressed(
                 if proc == 0:
                     recv = writer.offsets
                 else:
-                    recv = np.empty(
-                        recv_leading_shape, dtype=writer.stream_offsets.dtype
-                    )
+                    recv = np.empty(recv_leading_shape, dtype=writer.offsets.dtype)
                     mpi_comm.Recv(recv, source=proc, tag=tag_stream_offsets)
                 writer.save_offsets(recv, mpi_comm, dslc, fslc)
                 del recv
@@ -352,7 +348,7 @@ def receive_write_compressed(
                 if proc == 0:
                     recv = writer.gains
                 else:
-                    recv = np.empty(recv_leading_shape, dtype=writer.stream_gains.dtype)
+                    recv = np.empty(recv_leading_shape, dtype=writer.gains.dtype)
                     mpi_comm.Recv(recv, source=proc, tag=tag_stream_gains)
                 writer.save_gains(recv, mpi_comm, dslc, fslc)
                 del recv
