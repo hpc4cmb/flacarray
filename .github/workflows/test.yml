@@ -82,7 +82,7 @@ jobs:
       - name: Install Dependencies
         run: |
           source ~/conda/etc/profile.d/conda.sh \
-            && conda create --yes -n test python==3.12 \
+            && conda create --yes -n test python==${{ matrix.python }} \
             && conda activate test \
             && conda install --yes --file packaging/conda_build_requirements.txt
 
