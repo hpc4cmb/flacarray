@@ -3,6 +3,7 @@
 # a BSD-style license that can be found in the LICENSE file.
 
 import inspect
+import logging
 import os
 import time
 from functools import wraps
@@ -17,6 +18,19 @@ from .libflacarray import (
     wrap_int32_to_float32,
     wrap_int32_to_float64,
 )
+
+
+log = logging.getLogger()
+env_key = "FLACARRAY_LOGLEVEL"
+if env_key in os.environ:
+    lvl = os.environ[env_key]
+    if hasattr(logging, lvl):
+        log.setLevel(getattr(logging, lvl))
+    else:
+        msg = f"Environment variable {env_key} set to invalid level '{lvl}'"
+        raise RuntimeError(msg)
+else:
+    log.setLevel(logging.INFO)
 
 
 _use_function_timers = None

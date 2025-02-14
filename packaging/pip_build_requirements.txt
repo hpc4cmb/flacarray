@@ -2,5 +2,6 @@ cmake
 cython
 meson
 meson-python
+numpy
 h5py
 zarr

@@ -10,14 +10,15 @@ import numpy as np
 
 from ..array import FlacArray
 from ..demo import create_fake_data
-from ..zarr import have_zarr, write_array, read_array, ZarrGroup
+from ..hdf5 import write_array, read_array
+from ..hdf5_utils import H5File, have_hdf5
 from ..mpi import use_mpi, MPI
 
-if have_zarr:
-    import zarr
+if have_hdf5:
+    import h5py
 
 
-class ZarrTest(unittest.TestCase):
+class HDF5Test(unittest.TestCase):
     def setUp(self):
         fixture_name = os.path.splitext(os.path.basename(__file__))[0]
         if use_mpi:
@@ -26,8 +27,8 @@ class ZarrTest(unittest.TestCase):
             self.comm = None
 
     def test_direct_write_read(self):
-        if not have_zarr:
-            print("zarr not available, skipping tests", flush=True)
+        if not have_hdf5:
+            print("h5py not available, skipping tests", flush=True)
             return
         if self.comm is None:
             rank = 0
@@ -64,11 +65,11 @@ class ZarrTest(unittest.TestCase):
         if self.comm is not None:
             tmppath = self.comm.bcast(tmppath, root=0)
 
-        i32_file = os.path.join(tmppath, "data_i32.zarr")
-        with ZarrGroup(i32_file, mode="w", comm=self.comm) as zf:
+        i32_file = os.path.join(tmppath, "data_i32.h5")
+        with H5File(i32_file, "w", comm=self.comm) as hf:
             write_array(
                 input32,
-                zf,
+                hf.handle,
                 level=5,
                 quanta=None,
                 precision=None,
@@ -77,9 +78,9 @@ class ZarrTest(unittest.TestCase):
             )
         if self.comm is not None:
             self.comm.barrier()
-        with ZarrGroup(i32_file, mode="r", comm=self.comm) as zf:
+        with H5File(i32_file, "r", comm=self.comm) as hf:
             check_i32 = read_array(
-                zf,
+                hf.handle,
                 keep=None,
                 stream_slice=None,
                 keep_indices=False,
@@ -88,11 +89,11 @@ class ZarrTest(unittest.TestCase):
                 use_threads=True,
             )
 
-        i64_file = os.path.join(tmppath, "data_i64.zarr")
-        with ZarrGroup(i64_file, mode="w", comm=self.comm) as zf:
+        i64_file = os.path.join(tmppath, "data_i64.h5")
+        with H5File(i64_file, "w", comm=self.comm) as hf:
             write_array(
                 input64,
-                zf,
+                hf.handle,
                 level=5,
                 quanta=None,
                 precision=None,
@@ -101,9 +102,9 @@ class ZarrTest(unittest.TestCase):
             )
         if self.comm is not None:
             self.comm.barrier()
-        with ZarrGroup(i64_file, mode="r", comm=self.comm) as zf:
+        with H5File(i64_file, "r", comm=self.comm) as hf:
             check_i64 = read_array(
-                zf,
+                hf.handle,
                 keep=None,
                 stream_slice=None,
                 keep_indices=False,
@@ -112,11 +113,11 @@ class ZarrTest(unittest.TestCase):
                 use_threads=True,
             )
 
-        f32_file = os.path.join(tmppath, "data_f32.zarr")
-        with ZarrGroup(f32_file, mode="w", comm=self.comm) as zf:
+        f32_file = os.path.join(tmppath, "data_f32.h5")
+        with H5File(f32_file, "w", comm=self.comm) as hf:
             write_array(
                 inputf32,
-                zf,
+                hf.handle,
                 level=5,
                 quanta=None,
                 precision=None,
@@ -125,9 +126,9 @@ class ZarrTest(unittest.TestCase):
             )
         if self.comm is not None:
             self.comm.barrier()
-        with ZarrGroup(f32_file, mode="r", comm=self.comm) as zf:
+        with H5File(f32_file, "r", comm=self.comm) as hf:
             check_f32 = read_array(
-                zf,
+                hf.handle,
                 keep=None,
                 stream_slice=None,
                 keep_indices=False,
@@ -136,11 +137,11 @@ class ZarrTest(unittest.TestCase):
                 use_threads=True,
             )
 
-        f64_file = os.path.join(tmppath, "data_f64.zarr")
-        with ZarrGroup(f64_file, mode="w", comm=self.comm) as zf:
+        f64_file = os.path.join(tmppath, "data_f64.h5")
+        with H5File(f64_file, "w", comm=self.comm) as hf:
             write_array(
                 inputf64,
-                zf,
+                hf.handle,
                 level=5,
                 quanta=None,
                 precision=None,
@@ -149,9 +150,9 @@ class ZarrTest(unittest.TestCase):
             )
         if self.comm is not None:
             self.comm.barrier()
-        with ZarrGroup(f64_file, mode="r", comm=self.comm) as zf:
+        with H5File(f64_file, "r", comm=self.comm) as hf:
             check_f64 = read_array(
-                zf,
+                hf.handle,
                 keep=None,
                 stream_slice=None,
                 keep_indices=False,
@@ -160,36 +161,38 @@ class ZarrTest(unittest.TestCase):
                 use_threads=True,
             )
 
+        if self.comm is not None:
+            self.comm.barrier()
         del tmppath
         del tmpdir
 
         if not np.array_equal(check_i32, input32):
             print(f"check_i32 = {check_i32}", flush=True)
             print(f"input_i32 = {input32}", flush=True)
-            print("FAIL on i32 roundtrip to zarr", flush=True)
+            print("FAIL on i32 roundtrip to hdf5", flush=True)
             self.assertTrue(False)
 
         if not np.array_equal(check_i64, input64):
             print(f"check_i64 = {check_i64}", flush=True)
             print(f"input_i64 = {input64}", flush=True)
-            print("FAIL on i64 roundtrip to zarr", flush=True)
+            print("FAIL on i64 roundtrip to hdf5", flush=True)
             self.assertTrue(False)
 
         if not np.allclose(check_f32, inputf32, atol=1e-6):
             print(f"check_f32 = {check_f32}", flush=True)
             print(f"input_f32 = {inputf32}", flush=True)
-            print("FAIL on f32 roundtrip to zarr", flush=True)
+            print("FAIL on f32 roundtrip to hdf5", flush=True)
             self.assertTrue(False)
 
         if not np.allclose(check_f64, inputf64, atol=1e-6):
             print(f"check_f64 = {check_f64}", flush=True)
             print(f"input_f64 = {inputf64}", flush=True)
-            print("FAIL on f64 roundtrip to zarr", flush=True)
+            print("FAIL on f64 roundtrip to hdf5", flush=True)
             self.assertTrue(False)
 
     def test_array_write_read(self):
-        if not have_zarr:
-            print("zarr not available, skipping tests", flush=True)
+        if not have_hdf5:
+            print("h5py not available, skipping tests", flush=True)
             return
         if self.comm is None:
             rank = 0
@@ -215,11 +218,15 @@ class ZarrTest(unittest.TestCase):
         check_i64 = None
 
         inputf32 = create_fake_data(data_shape, 1.0).astype(np.float32)
-        flcarr_f32 = FlacArray.from_array(inputf32, mpi_comm=self.comm)
+        flcarr_f32 = FlacArray.from_array(
+            inputf32, mpi_comm=self.comm, use_threads=True
+        )
         check_f32 = None
 
         inputf64 = create_fake_data(data_shape, 1.0)
-        flcarr_f64 = FlacArray.from_array(inputf64, mpi_comm=self.comm, use_threads=True)
+        flcarr_f64 = FlacArray.from_array(
+            inputf64, mpi_comm=self.comm, use_threads=True
+        )
         check_f64 = None
 
         tmpdir = None
@@ -230,75 +237,79 @@ class ZarrTest(unittest.TestCase):
         if self.comm is not None:
             tmppath = self.comm.bcast(tmppath, root=0)
 
-        i32_file = os.path.join(tmppath, "data_i32.zarr")
-        with ZarrGroup(i32_file, mode="w", comm=self.comm) as zf:
-            flcarr_i32.write_zarr(zf)
+        i32_file = os.path.join(tmppath, "data_i32.h5")
+        with H5File(i32_file, "w", comm=self.comm) as hf:
+            flcarr_i32.write_hdf5(hf.handle)
         if self.comm is not None:
             self.comm.barrier()
-        with ZarrGroup(i32_file, mode="r", comm=self.comm) as zf:
-            check_i32 = FlacArray.read_zarr(zf, mpi_comm=self.comm)
+        with H5File(i32_file, "r", comm=self.comm) as hf:
+            check_i32 = FlacArray.read_hdf5(hf.handle, mpi_comm=self.comm)
 
-        i64_file = os.path.join(tmppath, "data_i64.zarr")
-        with ZarrGroup(i64_file, mode="w", comm=self.comm) as zf:
-            flcarr_i64.write_zarr(zf)
+        i64_file = os.path.join(tmppath, "data_i64.h5")
+        with H5File(i64_file, "w", comm=self.comm) as hf:
+            flcarr_i64.write_hdf5(hf.handle)
         if self.comm is not None:
             self.comm.barrier()
-        with ZarrGroup(i64_file, mode="r", comm=self.comm) as zf:
-            check_i64 = FlacArray.read_zarr(zf, mpi_comm=self.comm)
+        with H5File(i64_file, "r", comm=self.comm) as hf:
+            check_i64 = FlacArray.read_hdf5(hf.handle, mpi_comm=self.comm)
 
-        f32_file = os.path.join(tmppath, "data_f32.zarr")
-        with ZarrGroup(f32_file, mode="w", comm=self.comm) as zf:
-            flcarr_f32.write_zarr(zf)
+        f32_file = os.path.join(tmppath, "data_f32.h5")
+        with H5File(f32_file, "w", comm=self.comm) as hf:
+            flcarr_f32.write_hdf5(hf.handle)
         if self.comm is not None:
             self.comm.barrier()
-        with ZarrGroup(f32_file, mode="r", comm=self.comm) as zf:
-            check_f32 = FlacArray.read_zarr(zf, mpi_comm=self.comm)
+        with H5File(f32_file, "r", comm=self.comm) as hf:
+            check_f32 = FlacArray.read_hdf5(hf.handle, mpi_comm=self.comm)
 
-        f64_file = os.path.join(tmppath, "data_f64.zarr")
-        with ZarrGroup(f64_file, mode="w", comm=self.comm) as zf:
-            flcarr_f64.write_zarr(zf)
+        f64_file = os.path.join(tmppath, "data_f64.h5")
+        with H5File(f64_file, "w", comm=self.comm) as hf:
+            flcarr_f64.write_hdf5(hf.handle)
         if self.comm is not None:
             self.comm.barrier()
-        with ZarrGroup(f64_file, mode="r", comm=self.comm) as zf:
-            check_f64 = FlacArray.read_zarr(zf, mpi_comm=self.comm)
+        with H5File(f64_file, "r", comm=self.comm) as hf:
+            check_f64 = FlacArray.read_hdf5(hf.handle, mpi_comm=self.comm)
 
+        if self.comm is not None:
+            self.comm.barrier()
         del tmppath
         del tmpdir
 
         if check_i32 != flcarr_i32:
             print(f"check_i32 = {check_i32}", flush=True)
             print(f"flcarr_i32 = {flcarr_i32}", flush=True)
-            print("FAIL on i32 roundtrip to zarr", flush=True)
+            print("FAIL on i32 roundtrip to hdf5", flush=True)
             self.assertTrue(False)
         else:
-            output_i32 = check_i32.to_array()
+            output_i32 = check_i32.to_array(use_threads=True)
             if not np.array_equal(output_i32, input32):
-                print("FAIL on i32 zarr decompressed array check", flush=True)
+                print("FAIL on i32 hdf5 decompressed array check", flush=True)
                 self.assertTrue(False)
 
         if check_i64 != flcarr_i64:
-            print("FAIL on i64 roundtrip to zarr", flush=True)
+            print(f"check_i64 = {check_i64}", flush=True)
+            print(f"flcarr_i64 = {flcarr_i64}", flush=True)
+            print("FAIL on i64 roundtrip to hdf5", flush=True)
             self.assertTrue(False)
         else:
-            output_i64 = check_i64.to_array()
+            output_i64 = check_i64.to_array(use_threads=True)
             if not np.array_equal(output_i64, input64):
-                print("FAIL on i64 zarr decompressed array check", flush=True)
+                print("FAIL on i64 hdf5 decompressed array check", flush=True)
                 self.assertTrue(False)
 
         if check_f32 != flcarr_f32:
-            print("FAIL on f32 roundtrip to zarr", flush=True)
+            print("FAIL on f32 roundtrip to hdf5", flush=True)
             self.assertTrue(False)
         else:
-            output_f32 = check_f32.to_array()
+            output_f32 = check_f32.to_array(use_threads=True)
             if not np.allclose(output_f32, inputf32, rtol=1.0e-5, atol=1.0e-5):
-                print("FAIL on f32 zarr decompressed array check", flush=True)
+                print("FAIL on f32 hdf5 decompressed array check", flush=True)
                 self.assertTrue(False)
 
         if check_f64 != flcarr_f64:
-            print("FAIL on f64 roundtrip to zarr", flush=True)
+            print("FAIL on f64 roundtrip to hdf5", flush=True)
             self.assertTrue(False)
         else:
-            output_f64 = check_f64.to_array()
+            output_f64 = check_f64.to_array(use_threads=True)
             if not np.allclose(output_f64, inputf64, rtol=1.0e-5, atol=1.0e-5):
-                print("FAIL on f64 zarr decompressed array check", flush=True)
+                print("FAIL on f64 hdf5 decompressed array check", flush=True)
                 self.assertTrue(False)

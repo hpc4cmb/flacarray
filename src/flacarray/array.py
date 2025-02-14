@@ -3,7 +3,6 @@
 # a BSD-style license that can be found in the LICENSE file.
 
 import copy
-import logging
 
 import numpy as np
 
@@ -12,10 +11,9 @@ from .decompress import array_decompress_slice
 from .hdf5 import write_compressed as hdf5_write_compressed
 from .hdf5 import read_compressed as hdf5_read_compressed
 from .mpi import global_bytes, global_array_properties
+from .utils import log
 from .zarr import write_compressed as zarr_write_compressed
 from .zarr import read_compressed as zarr_read_compressed
-
-log = logging.getLogger("flacarray")
 
 
 class FlacArray:
