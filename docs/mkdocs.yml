@@ -7,20 +7,21 @@ theme:
     - navigation.path
 
 plugins:
-- search
-- mkdocstrings:
-    handlers:
-      python:
-        options:
-          docstring_style: google
-          show_root_heading: true
-          heading_level: 3
-          parameter_headings: false
-          show_object_full_path: false
-          show_symbol_type_heading: true
-          show_symbol_type_toc: true
-- mkdocs-jupyter:
-    execute: false
+  - search
+  - mkdocstrings:
+      handlers:
+        python:
+          options:
+            docstring_style: google
+            show_root_heading: true
+            heading_level: 3
+            parameter_headings: false
+            show_object_full_path: false
+            show_symbol_type_heading: true
+            show_symbol_type_toc: true
+  - mkdocs-jupyter:
+      execute: false
+  - print-site
 
 nav:
   - Introduction: index.md
