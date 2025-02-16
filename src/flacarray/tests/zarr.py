@@ -224,85 +224,85 @@ class ZarrTest(unittest.TestCase):
         flcarr_f64 = FlacArray.from_array(inputf64, mpi_comm=self.comm, use_threads=True)
         check_f64 = None
 
-        # tmpdir = None
-        # tmppath = None
-        # if rank == 0:
-        #     tmpdir = tempfile.TemporaryDirectory()
-        #     tmppath = tmpdir.name
-        # if self.comm is not None:
-        #     tmppath = self.comm.bcast(tmppath, root=0)
+        tmpdir = None
+        tmppath = None
+        if rank == 0:
+            tmpdir = tempfile.TemporaryDirectory()
+            tmppath = tmpdir.name
+        if self.comm is not None:
+            tmppath = self.comm.bcast(tmppath, root=0)
 
-        # i32_file = os.path.join(tmppath, "data_i32.zarr")
-        # with ZarrGroup(i32_file, mode="w", comm=self.comm) as zf:
-        #     flcarr_i32.write_zarr(zf)
-        # if self.comm is not None:
-        #     self.comm.barrier()
-        # with ZarrGroup(i32_file, mode="r", comm=self.comm) as zf:
-        #     check_i32 = FlacArray.read_zarr(zf, mpi_comm=self.comm)
+        i32_file = os.path.join(tmppath, "data_i32.zarr")
+        with ZarrGroup(i32_file, mode="w", comm=self.comm) as zf:
+            flcarr_i32.write_zarr(zf)
+        if self.comm is not None:
+            self.comm.barrier()
+        with ZarrGroup(i32_file, mode="r", comm=self.comm) as zf:
+            check_i32 = FlacArray.read_zarr(zf, mpi_comm=self.comm)
 
-        # i64_file = os.path.join(tmppath, "data_i64.zarr")
-        # with ZarrGroup(i64_file, mode="w", comm=self.comm) as zf:
-        #     flcarr_i64.write_zarr(zf)
-        # if self.comm is not None:
-        #     self.comm.barrier()
-        # with ZarrGroup(i64_file, mode="r", comm=self.comm) as zf:
-        #     check_i64 = FlacArray.read_zarr(zf, mpi_comm=self.comm)
+        i64_file = os.path.join(tmppath, "data_i64.zarr")
+        with ZarrGroup(i64_file, mode="w", comm=self.comm) as zf:
+            flcarr_i64.write_zarr(zf)
+        if self.comm is not None:
+            self.comm.barrier()
+        with ZarrGroup(i64_file, mode="r", comm=self.comm) as zf:
+            check_i64 = FlacArray.read_zarr(zf, mpi_comm=self.comm)
 
-        # f32_file = os.path.join(tmppath, "data_f32.zarr")
-        # with ZarrGroup(f32_file, mode="w", comm=self.comm) as zf:
-        #     flcarr_f32.write_zarr(zf)
-        # if self.comm is not None:
-        #     self.comm.barrier()
-        # with ZarrGroup(f32_file, mode="r", comm=self.comm) as zf:
-        #     check_f32 = FlacArray.read_zarr(zf, mpi_comm=self.comm)
+        f32_file = os.path.join(tmppath, "data_f32.zarr")
+        with ZarrGroup(f32_file, mode="w", comm=self.comm) as zf:
+            flcarr_f32.write_zarr(zf)
+        if self.comm is not None:
+            self.comm.barrier()
+        with ZarrGroup(f32_file, mode="r", comm=self.comm) as zf:
+            check_f32 = FlacArray.read_zarr(zf, mpi_comm=self.comm)
 
-        # f64_file = os.path.join(tmppath, "data_f64.zarr")
-        # with ZarrGroup(f64_file, mode="w", comm=self.comm) as zf:
-        #     flcarr_f64.write_zarr(zf)
-        # if self.comm is not None:
-        #     self.comm.barrier()
-        # with ZarrGroup(f64_file, mode="r", comm=self.comm) as zf:
-        #     check_f64 = FlacArray.read_zarr(zf, mpi_comm=self.comm)
+        f64_file = os.path.join(tmppath, "data_f64.zarr")
+        with ZarrGroup(f64_file, mode="w", comm=self.comm) as zf:
+            flcarr_f64.write_zarr(zf)
+        if self.comm is not None:
+            self.comm.barrier()
+        with ZarrGroup(f64_file, mode="r", comm=self.comm) as zf:
+            check_f64 = FlacArray.read_zarr(zf, mpi_comm=self.comm)
 
-        # if self.comm is not None:
-        #     self.comm.barrier()
-        # del tmppath
-        # del tmpdir
+        if self.comm is not None:
+            self.comm.barrier()
+        del tmppath
+        del tmpdir
 
-        # if check_i32 != flcarr_i32:
-        #     print(f"check_i32 = {check_i32}", flush=True)
-        #     print(f"flcarr_i32 = {flcarr_i32}", flush=True)
-        #     print("FAIL on i32 roundtrip to zarr", flush=True)
-        #     self.assertTrue(False)
-        # else:
-        #     output_i32 = check_i32.to_array()
-        #     if not np.array_equal(output_i32, input32):
-        #         print("FAIL on i32 zarr decompressed array check", flush=True)
-        #         self.assertTrue(False)
+        if check_i32 != flcarr_i32:
+            print(f"check_i32 = {check_i32}", flush=True)
+            print(f"flcarr_i32 = {flcarr_i32}", flush=True)
+            print("FAIL on i32 roundtrip to zarr", flush=True)
+            self.assertTrue(False)
+        else:
+            output_i32 = check_i32.to_array()
+            if not np.array_equal(output_i32, input32):
+                print("FAIL on i32 zarr decompressed array check", flush=True)
+                self.assertTrue(False)
 
-        # if check_i64 != flcarr_i64:
-        #     print("FAIL on i64 roundtrip to zarr", flush=True)
-        #     self.assertTrue(False)
-        # else:
-        #     output_i64 = check_i64.to_array()
-        #     if not np.array_equal(output_i64, input64):
-        #         print("FAIL on i64 zarr decompressed array check", flush=True)
-        #         self.assertTrue(False)
+        if check_i64 != flcarr_i64:
+            print("FAIL on i64 roundtrip to zarr", flush=True)
+            self.assertTrue(False)
+        else:
+            output_i64 = check_i64.to_array()
+            if not np.array_equal(output_i64, input64):
+                print("FAIL on i64 zarr decompressed array check", flush=True)
+                self.assertTrue(False)
 
-        # if check_f32 != flcarr_f32:
-        #     print("FAIL on f32 roundtrip to zarr", flush=True)
-        #     self.assertTrue(False)
-        # else:
-        #     output_f32 = check_f32.to_array()
-        #     if not np.allclose(output_f32, inputf32, rtol=1.0e-5, atol=1.0e-5):
-        #         print("FAIL on f32 zarr decompressed array check", flush=True)
-        #         self.assertTrue(False)
+        if check_f32 != flcarr_f32:
+            print("FAIL on f32 roundtrip to zarr", flush=True)
+            self.assertTrue(False)
+        else:
+            output_f32 = check_f32.to_array()
+            if not np.allclose(output_f32, inputf32, rtol=1.0e-5, atol=1.0e-5):
+                print("FAIL on f32 zarr decompressed array check", flush=True)
+                self.assertTrue(False)
 
-        # if check_f64 != flcarr_f64:
-        #     print("FAIL on f64 roundtrip to zarr", flush=True)
-        #     self.assertTrue(False)
-        # else:
-        #     output_f64 = check_f64.to_array()
-        #     if not np.allclose(output_f64, inputf64, rtol=1.0e-5, atol=1.0e-5):
-        #         print("FAIL on f64 zarr decompressed array check", flush=True)
-        #         self.assertTrue(False)
+        if check_f64 != flcarr_f64:
+            print("FAIL on f64 roundtrip to zarr", flush=True)
+            self.assertTrue(False)
+        else:
+            output_f64 = check_f64.to_array()
+            if not np.allclose(output_f64, inputf64, rtol=1.0e-5, atol=1.0e-5):
+                print("FAIL on f64 zarr decompressed array check", flush=True)
+                self.assertTrue(False)
