@@ -53,7 +53,7 @@ To build and install the package.
 
 To also work on docs, install additional packages:
 
-    conda install mkdocs mkdocstrings mkdocs-jupyter htmlark
+    conda install mkdocs mkdocstrings mkdocs-jupyter
     pip install mkdocs-print-site-plugin
 
 ### Other Ways of Building
