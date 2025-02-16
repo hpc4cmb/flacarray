@@ -2,7 +2,6 @@
 # All rights reserved.  Use of this source code is governed by
 # a BSD-style license that can be found in the LICENSE file.
 
-import logging
 import os
 import tempfile
 
@@ -15,8 +14,7 @@ except ImportError:
     have_hdf5 = False
 
 from .mpi import MPI, use_mpi
-
-log = logging.getLogger("flacarray")
+from .utils import log
 
 
 # Test whether h5py supports parallel I/O

@@ -7,9 +7,6 @@ This module should only be imported on-demand by the higher-level read / write
 functions.
 
 """
-
-import logging
-
 import numpy as np
 
 from .decompress import array_decompress
@@ -20,10 +17,8 @@ from .io_common import (
     select_keep_indices,
     read_compressed_dataset_slice,
 )
-from .utils import function_timer
+from .utils import function_timer, log
 
-
-log = logging.getLogger("flacarray")
 
 """The dataset and attribute names."""
 hdf5_names = {

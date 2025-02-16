@@ -9,7 +9,6 @@ format, but the `read_zarr` function can read the current and past
 versions.
 
 """
-
 import importlib
 
 import numpy as np
@@ -25,7 +24,7 @@ from . import __version__ as flacarray_version
 from .compress import array_compress
 from .io_common import receive_write_compressed
 from .mpi import global_array_properties, global_bytes
-from .utils import function_timer
+from .utils import function_timer, log
 
 
 class ZarrGroup(object):
@@ -224,44 +223,55 @@ def write_compressed(
         # number of compressed bytes and the stream starting bytes, it greatly
         # improves the convenience of loading data back in.
 
+        # Zarr 3.0 requires shapes to be tuples of int
+        z_global_leading_shape = tuple([int(x) for x in global_leading_shape])
+        z_global_nbytes = (int(global_nbytes),)
+
+        if hasattr(zgrp, "create_array"):
+            # Zarr-3
+            create_func = zgrp.create_array
+        else:
+            # Zarr-2
+            create_func = zgrp.create_dataset
+
         # The starting bytes of each stream
-        dstarts = zgrp.create_dataset(
+        dstarts = create_func(
             znames["stream_starts"],
-            shape=global_leading_shape,
+            shape=z_global_leading_shape,
             dtype=np.int64,
         )
         dstarts.attrs[znames["stream_size"]] = stream_size
 
         # The number of bytes in each stream
-        dbytes = zgrp.create_dataset(
+        dbytes = create_func(
             znames["stream_bytes"],
-            shape=global_leading_shape,
+            shape=z_global_leading_shape,
             dtype=np.int64,
         )
 
         # The stream offsets and gains are optional, depending on the original
         # array type.
         if stream_offsets is not None:
-            dsoff = zgrp.create_dataset(
+            dsoff = create_func(
                 znames["stream_offsets"],
-                shape=global_leading_shape,
+                shape=z_global_leading_shape,
                 dtype=stream_offsets.dtype,
             )
         else:
             dsoff = None
         if stream_gains is not None:
-            dsgain = zgrp.create_dataset(
+            dsgain = create_func(
                 znames["stream_gains"],
-                shape=global_leading_shape,
+                shape=z_global_leading_shape,
                 dtype=stream_gains.dtype,
             )
         else:
             dsgain = None
 
         # Always have compressed bytes
-        dcomp = zgrp.create_dataset(
+        dcomp = create_func(
             znames["compressed"],
-            shape=(global_nbytes,),
+            shape=z_global_nbytes,
             dtype=np.uint8,
         )
 

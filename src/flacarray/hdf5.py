@@ -9,7 +9,6 @@ format, but the `read_hdf5` function can read the current and past
 versions.
 
 """
-
 import importlib
 
 import numpy as np

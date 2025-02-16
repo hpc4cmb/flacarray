@@ -14,4 +14,4 @@ libflac = dependency('flac', version: '>= 1.4.0', static: false)
 
 py = import('python').find_installation(pure: false)
 
-subdir('flacarray')
+subdir('src')

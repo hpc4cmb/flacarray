@@ -7,9 +7,6 @@ This module should only be imported on-demand by the higher-level read / write
 functions.
 
 """
-
-import logging
-
 import numpy as np
 
 import zarr
@@ -17,10 +14,8 @@ import zarr
 from .decompress import array_decompress
 from .mpi import distribute_and_verify
 from .io_common import read_send_compressed
-from .utils import function_timer
+from .utils import function_timer, log
 
-
-log = logging.getLogger("flacarray")
 
 """The dataset and attribute names."""
 zarr_names = {

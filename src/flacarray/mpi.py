@@ -3,11 +3,10 @@
 # a BSD-style license that can be found in the LICENSE file.
 
 import os
-import logging
 
 import numpy as np
 
-log = logging.getLogger("flacarray")
+from .utils import log
 
 
 if "MPI_DISABLE" in os.environ:

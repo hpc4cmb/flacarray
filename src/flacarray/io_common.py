@@ -6,15 +6,9 @@
 This module contains helper tools used by multiple I/O formats.
 
 """
-
-import logging
-
 import numpy as np
 
-from .utils import keep_select, function_timer, select_keep_indices
-
-
-log = logging.getLogger("flacarray")
+from .utils import keep_select, function_timer, select_keep_indices, log
 
 
 @function_timer
