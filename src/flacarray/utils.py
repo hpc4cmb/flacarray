@@ -21,16 +21,16 @@ from .libflacarray import (
 
 
 log = logging.getLogger()
-env_key = "FLACARRAY_LOGLEVEL"
-if env_key in os.environ:
-    lvl = os.environ[env_key]
-    if hasattr(logging, lvl):
-        log.setLevel(getattr(logging, lvl))
-    else:
-        msg = f"Environment variable {env_key} set to invalid level '{lvl}'"
-        raise RuntimeError(msg)
-else:
-    log.setLevel(logging.INFO)
+log.setLevel(logging.INFO)
+env_keys = ["FLACARRAY_LOGLEVEL", "FLACARRAY_LOG_LEVEL"]
+for env_key in env_keys:
+    if env_key in os.environ:
+        lvl = os.environ[env_key]
+        if hasattr(logging, lvl):
+            log.setLevel(getattr(logging, lvl))
+        else:
+            msg = f"Environment variable {env_key} set to invalid level '{lvl}'"
+            raise RuntimeError(msg)
 
 
 _use_function_timers = None
