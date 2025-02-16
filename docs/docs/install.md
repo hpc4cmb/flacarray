@@ -41,7 +41,7 @@ create an environment called "flacarray". First create the env with all
 dependencies and activate it (FIXME, add a requirements file for dev):
 
     conda create -n flacarray \
-        c_compiler numpy libflac cython meson-python
+        c_compiler numpy libflac cython meson-python pkgconfig
 
     conda activate flacarray
 
@@ -50,6 +50,11 @@ Now you can go into your local git checkout of the flacarray source and do:
     pip install .
 
 To build and install the package.
+
+To also work on docs, install additional packages:
+
+    conda install mkdocs mkdocstrings mkdocs-jupyter
+    pip install mkdocs-print-site-plugin
 
 ### Other Ways of Building
 
