@@ -278,7 +278,7 @@ class FlacArray:
             vw[0] = key
             keep = self._keep_view(tuple(vw))
 
-        arr, _ = array_decompress_slice(
+        arr, strm_indices = array_decompress_slice(
             self._compressed,
             self._stream_size,
             self._stream_starts,
@@ -289,7 +289,15 @@ class FlacArray:
             first_stream_sample=first,
             last_stream_sample=last,
         )
-        return arr
+        arr_indices = np.transpose(np.array(strm_indices))
+        leading = [
+            len(np.unique(arr_indices[x])) for x in range(len(self._leading_shape))
+        ]
+        if first is None:
+            full_shape = tuple(leading) + (self._shape[-1],)
+        else:
+            full_shape = tuple(leading) + (last - first,)
+        return np.squeeze(arr.reshape(full_shape))
 
     def __delitem__(self, key):
         raise RuntimeError("Cannot delete individual streams")

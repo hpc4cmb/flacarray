@@ -35,7 +35,9 @@ class ArrayTest(unittest.TestCase):
             .astype(np.int32)
         )
 
-        comp_i32, starts_i32, nbytes_i32, off_i32, gain_i32 = array_compress(data_i32, level=5)
+        comp_i32, starts_i32, nbytes_i32, off_i32, gain_i32 = array_compress(
+            data_i32, level=5
+        )
         self.assertTrue(off_i32 is None)
         self.assertTrue(gain_i32 is None)
 
@@ -59,7 +61,9 @@ class ArrayTest(unittest.TestCase):
             low=-(2**30), high=2**29, size=flatsize, dtype=np.int64
         ).reshape(data_shape)
 
-        comp_i64, starts_i64, nbytes_i64, off_i64, gain_i64 = array_compress(data_i64, level=5)
+        comp_i64, starts_i64, nbytes_i64, off_i64, gain_i64 = array_compress(
+            data_i64, level=5
+        )
         self.assertTrue(gain_i64 is None)
 
         check_i64 = array_decompress(
@@ -85,7 +89,9 @@ class ArrayTest(unittest.TestCase):
         ).reshape(data_shape)
 
         try:
-            comp_i64, starts_i64, nbytes_i64, off_i64, gain_i64 = array_compress(data_i64, level=5)
+            comp_i64, starts_i64, nbytes_i64, off_i64, gain_i64 = array_compress(
+                data_i64, level=5
+            )
             print("Failed to catch truncation of int64 data")
             self.assertTrue(False)
         except RuntimeError:
@@ -94,7 +100,9 @@ class ArrayTest(unittest.TestCase):
         # float32 data
 
         data_f32 = create_fake_data(data_shape, 1.0).astype(np.float32)
-        comp_f32, starts_f32, nbytes_f32, off_f32, gain_f32 = array_compress(data_f32, level=5)
+        comp_f32, starts_f32, nbytes_f32, off_f32, gain_f32 = array_compress(
+            data_f32, level=5
+        )
         check_f32 = array_decompress(
             comp_f32,
             data_shape[-1],
@@ -123,7 +131,9 @@ class ArrayTest(unittest.TestCase):
 
         data_f64 = create_fake_data(data_shape, 1.0)
 
-        comp_f64, starts_f64, nbytes_f64, off_f64, gain_f64 = array_compress(data_f64, level=5)
+        comp_f64, starts_f64, nbytes_f64, off_f64, gain_f64 = array_compress(
+            data_f64, level=5
+        )
         check_f64 = array_decompress(
             comp_f64,
             data_shape[-1],
@@ -163,3 +173,30 @@ class ArrayTest(unittest.TestCase):
         self.assertTrue(
             np.allclose(check_slc_f64, data_f64[:, :, first:last], rtol=1e-5, atol=1e-5)
         )
+
+    def test_slicing_shape(self):
+        data_shape = (4, 3, 10, 100)
+        flatsize = np.prod(data_shape)
+        rng = np.random.default_rng()
+        data_i32 = (
+            rng.integers(low=-(2**27), high=2**30, size=flatsize, dtype=np.int32)
+            .reshape(data_shape)
+            .astype(np.int32)
+        )
+
+        farray = FlacArray.from_array(data_i32)
+
+        # Try some slices and verify expected result shape.
+        for dslc, dshape in [
+            ((1, 2, 5, 50), ()),
+            ((1, 2, 5), (100,)),
+            ((1, slice(1, 3, 1), slice(6, 8, 1), 50), (2, 2)),
+            ((slice(1, 3, 1), 2, slice(6, 8, 1), slice(60, 80, 1)), (2, 2, 20)),
+        ]:
+            check = farray[dslc]
+            if check.shape != dshape:
+                print(
+                    f"Array[{dslc}] shape: {check.shape} != {dshape}",
+                    flush=True,
+                )
+                raise RuntimeError("Failed slice shape check")

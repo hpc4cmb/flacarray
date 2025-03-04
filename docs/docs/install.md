@@ -41,7 +41,7 @@ create an environment called "flacarray". First create the env with all
 dependencies and activate it (FIXME, add a requirements file for dev):
 
     conda create -n flacarray \
-        c_compiler numpy libflac cython meson-python pkgconfig
+        c-compiler numpy libflac cython meson-python pkgconfig
 
     conda activate flacarray
 
