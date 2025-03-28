@@ -284,13 +284,15 @@ class FlacArray:
                             raise ValueError(msg)
                         first = axkey.start
                         last = axkey.stop
-                        istart = first
-                        if istart is None:
-                            istart = 0
-                        istop = last
-                        if istop is None:
-                            istop = self._shape[-1]
-                        sample_shape = (istop - istart,)
+                        if first is None or first < 0:
+                            first = 0
+                        if first > self._shape[-1] - 1:
+                            first = self._shape[-1] - 1
+                        if last is None or last > self._shape[-1]:
+                            last = self._shape[-1]
+                        if last < 1:
+                            last = 1
+                        sample_shape = (last - first,)
                     elif isinstance(axkey, (int, np.integer)):
                         # Just a scalar
                         first = axkey

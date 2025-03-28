@@ -193,6 +193,9 @@ class ArrayTest(unittest.TestCase):
             (2, slice(0, 1, 1), slice(0, 1, 1), slice(None)),
             (1, slice(1, 3, 1), slice(6, 8, 1), 50),
             (slice(1, 3, 1), 2, slice(6, 8, 1), slice(60, 80, 1)),
+            (2, 1, slice(2, 8, 2), slice(80, 120, 1)),
+            (2, 1, slice(2, 8, 2), slice(80, None)),
+            (2, 1, slice(2, 8, 2), slice(None, 10)),
         ]:
             # Slice of the original numpy array
             check = data_i32[dslc]
