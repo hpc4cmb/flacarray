@@ -187,16 +187,22 @@ class ArrayTest(unittest.TestCase):
         farray = FlacArray.from_array(data_i32)
 
         # Try some slices and verify expected result shape.
-        for dslc, dshape in [
-            ((1, 2, 5, 50), ()),
-            ((1, 2, 5), (100,)),
-            ((1, slice(1, 3, 1), slice(6, 8, 1), 50), (2, 2)),
-            ((slice(1, 3, 1), 2, slice(6, 8, 1), slice(60, 80, 1)), (2, 2, 20)),
+        for dslc in [
+            (1, 2, 5, 50),
+            (1, 2, 5),
+            (2, slice(0, 1, 1), slice(0, 1, 1), slice(None)),
+            (1, slice(1, 3, 1), slice(6, 8, 1), 50),
+            (slice(1, 3, 1), 2, slice(6, 8, 1), slice(60, 80, 1)),
         ]:
-            check = farray[dslc]
-            if check.shape != dshape:
+            # Slice of the original numpy array
+            check = data_i32[dslc]
+            # Slice of the FlacArray
+            fcheck = farray[dslc]
+
+            # Compare the shapes
+            if fcheck.shape != check.shape:
                 print(
-                    f"Array[{dslc}] shape: {check.shape} != {dshape}",
+                    f"Array[{dslc}] shape: {fcheck.shape} != {check.shape}",
                     flush=True,
                 )
                 raise RuntimeError("Failed slice shape check")

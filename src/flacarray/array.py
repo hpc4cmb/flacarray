@@ -240,43 +240,81 @@ class FlacArray:
         view[key] = True
         return view
 
+    def _slice_nelem(self, slc, dim):
+        islc = slc.indices(dim)
+        nslc = (islc[1] - islc[0]) // islc[2]
+        if islc[1] < islc[0]:
+            nslc += 1
+        return nslc
+
     def __getitem__(self, key):
         """Decompress a slice of data on the fly."""
         first = None
         last = None
         keep = None
+        ndim = len(self._shape)
+        output_shape = list()
+        sample_shape = (self._shape[-1],)
         if isinstance(key, tuple):
             # We are slicing on multiple dimensions
-            if len(key) == len(self._shape):
-                # Slicing on the sample dimension too
-                keep = self._keep_view(key[:-1])
-                samp_key = key[-1]
-                if isinstance(samp_key, slice):
-                    # A slice
-                    if samp_key.step is not None and samp_key.step != 1:
-                        raise ValueError("Only stride==1 supported on stream slices")
-                    first = samp_key.start
-                    last = samp_key.stop
-                elif isinstance(samp_key, (int, np.integer)):
-                    # Just a scalar
-                    first = samp_key
-                    last = samp_key + 1
+            keep_slice = list()
+            for axis, axkey in enumerate(key):
+                if axis < ndim - 1:
+                    # One of the leading dimensions
+                    keep_slice.append(axkey)
+                    if not isinstance(axkey, (int, np.integer)):
+                        # Some kind of slice, do not compress this dimension.  Compute
+                        # the number of elements in the output shape.
+                        nslc = self._slice_nelem(axkey, self._shape[axis])
+                        output_shape.append(nslc)
                 else:
-                    raise ValueError(
-                        "Only contiguous slices supported on the stream dimension"
-                    )
-            else:
-                # Only slicing the leading dimensions
-                vw = list(key)
-                vw.extend(
-                    [slice(None) for x in range(len(self._leading_shape) - len(key))]
-                )
-                keep = self._keep_view(tuple(vw))
+                    # This is the sample axis.  Special handling to ensure that the
+                    # selected samples are contiguous.
+                    if isinstance(axkey, slice):
+                        # A slice
+                        if (axkey.step is not None and axkey.step != 1):
+                            msg = "Only stride==1 supported on stream slices"
+                            raise ValueError(msg)
+                        if (
+                            axkey.start is not None
+                            and axkey.stop is not None
+                            and axkey.stop < axkey.start
+                        ):
+                            msg = "Only increasing slices supported on streams"
+                            raise ValueError(msg)
+                        first = axkey.start
+                        last = axkey.stop
+                        istart = first
+                        if istart is None:
+                            istart = 0
+                        istop = last
+                        if istop is None:
+                            istop = self._shape[-1]
+                        sample_shape = (istop - istart,)
+                    elif isinstance(axkey, (int, np.integer)):
+                        # Just a scalar
+                        first = axkey
+                        last = axkey + 1
+                        sample_shape = ()
+                    else:
+                        raise ValueError(
+                            "Only contiguous slices supported on the stream dimension"
+                        )
+            keep_slice.extend(
+                [slice(None) for x in range(len(self._leading_shape) - len(key))]
+            )
         else:
             # We are slicing / indexing only the leading dimension
-            vw = [slice(None) for x in range(len(self._leading_shape))]
-            vw[0] = key
-            keep = self._keep_view(tuple(vw))
+            keep_slice = [slice(None) for x in range(len(self._leading_shape))]
+            keep_slice[0] = key
+            if not isinstance(key, (int, np.integer)):
+                # Some kind of slice, do not compress this dimension.  Compute
+                # the number of elements in the output shape.
+                nslc = self._slice_nelem(key, self._shape[0])
+                output_shape.append(nslc)
+
+        keep = self._keep_view(tuple(keep_slice))
+        output_shape = tuple(output_shape)
 
         arr, strm_indices = array_decompress_slice(
             self._compressed,
@@ -289,15 +327,8 @@ class FlacArray:
             first_stream_sample=first,
             last_stream_sample=last,
         )
-        arr_indices = np.transpose(np.array(strm_indices))
-        leading = [
-            len(np.unique(arr_indices[x])) for x in range(len(self._leading_shape))
-        ]
-        if first is None:
-            full_shape = tuple(leading) + (self._shape[-1],)
-        else:
-            full_shape = tuple(leading) + (last - first,)
-        return np.squeeze(arr.reshape(full_shape))
+        full_shape = output_shape + sample_shape
+        return arr.reshape(full_shape)
 
     def __delitem__(self, key):
         raise RuntimeError("Cannot delete individual streams")
