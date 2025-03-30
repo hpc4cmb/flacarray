@@ -5,24 +5,7 @@
 #include <stdbool.h>
 #include <string.h>
 
-#include <FLAC/stream_encoder.h>
-
-#include "flacarray.h"
-
-
-// Callback structure to store the output encoded bytes.
-typedef struct {
-    int64_t last_stream;
-    int64_t cur_stream;
-    int64_t * stream_offsets;
-    ArrayUint8 * compressed;
-} enc_callback_data;
-
-typedef struct {
-    int64_t n_stream;
-    int64_t cur_stream;
-    ArrayUint8 ** compressed;
-} enc_threaded_callback_data;
+#include <flacarray.h>
 
 
 // Callback function, called by the encoder for each chunk
@@ -47,7 +30,7 @@ FLAC__StreamEncoderWriteStatus enc_write_callback(
         // We are starting a new stream.  Record the current starting offset.
         if (last < 0) {
             // This is the first stream
-            stream_offsets[0] = 0;
+            stream_offsets[cur] = 0;
         } else {
             stream_offsets[cur] = comp->n_elem;
         }
@@ -122,7 +105,7 @@ FLAC__StreamEncoderWriteStatus enc_threaded_write_callback(
 
 
 // Helper function to free an array of buffers
-void _free_compressed(ArrayUint8 ** buffers, int64_t n_stream) {
+void free_compressed_buffers(ArrayUint8 ** buffers, int64_t n_stream) {
     if (buffers != NULL) {
         for (int64_t istream = 0; istream < n_stream; ++istream) {
             if (buffers[istream] != NULL) {
@@ -142,11 +125,16 @@ void _free_compressed(ArrayUint8 ** buffers, int64_t n_stream) {
 // attempt is made to free any buffers that were allocated, and an error code is
 // returned which is a bitwise OR of the errors on all threads.
 
+// NOTE:  libFLAC >= 1.5.0 natively supports threaded compression, but this is not
+// enabled by default.  We could evaluate the performance of that, but would require
+// a check on the version being used.
+
 // Unthreaded version.  No need for thread-local buffers, so this is often faster.
 int encode(
     int32_t * const data,
     int64_t n_stream,
     int64_t stream_size,
+    uint32_t n_channels,
     uint32_t level,
     int64_t * n_bytes,
     int64_t * starts,
@@ -204,7 +192,7 @@ int encode(
             errors |= ERROR_ENCODE_SET_BLOCK_SIZE;
             continue;
         }
-        success = FLAC__stream_encoder_set_channels(encoder, 1);
+        success = FLAC__stream_encoder_set_channels(encoder, n_channels);
         if (!success) {
             errors |= ERROR_ENCODE_SET_CHANNELS;
             continue;
@@ -232,7 +220,7 @@ int encode(
         // Encode this stream.
         success = FLAC__stream_encoder_process_interleaved(
             encoder,
-            &(data[istream * stream_size]),
+            &(data[istream * stream_size * n_channels]),
             stream_size
         );
         if (!success) {
@@ -287,6 +275,7 @@ int encode_threaded(
     int32_t * const data,
     int64_t n_stream,
     int64_t stream_size,
+    uint32_t n_channels,
     uint32_t level,
     int64_t * n_bytes,
     int64_t * starts,
@@ -356,7 +345,7 @@ int encode_threaded(
                 errors |= ERROR_ENCODE_SET_BLOCK_SIZE;
                 continue;
             }
-            success = FLAC__stream_encoder_set_channels(encoder, 1);
+            success = FLAC__stream_encoder_set_channels(encoder, n_channels);
             if (!success) {
                 errors |= ERROR_ENCODE_SET_CHANNELS;
                 continue;
@@ -384,7 +373,7 @@ int encode_threaded(
             // Encode this stream.
             success = FLAC__stream_encoder_process_interleaved(
                 encoder,
-                &(data[istream * stream_size]),
+                &(data[istream * stream_size * n_channels]),
                 stream_size
             );
             if (!success) {
@@ -404,7 +393,7 @@ int encode_threaded(
 
     if (errors != ERROR_NONE) {
         // Clean up and exit
-        _free_compressed(buffers, n_stream);
+        free_compressed_buffers(buffers, n_stream);
         return errors;
     }
 
@@ -414,7 +403,7 @@ int encode_threaded(
         if (buffers[istream] == NULL) {
             // One of the streams was never processed.  This is an error.
             errors |= ERROR_ENCODE_COLLECT;
-            _free_compressed(buffers, n_stream);
+            free_compressed_buffers(buffers, n_stream);
             return errors;
         }
         starts[istream] = (*n_bytes);
@@ -425,7 +414,7 @@ int encode_threaded(
     (*bytes) = (unsigned char *)malloc((*n_bytes));
     if ((*bytes) == NULL) {
         // Allocation failed.
-        _free_compressed(buffers, n_stream);
+        free_compressed_buffers(buffers, n_stream);
         errors |= ERROR_ALLOC;
         return errors;
     }
@@ -440,8 +429,112 @@ int encode_threaded(
     }
 
     // Cleanup
-    _free_compressed(buffers, n_stream);
+    free_compressed_buffers(buffers, n_stream);
 
     return errors;
 }
 
+
+// Helper wrappers for 32bit and 64bit integers.
+
+int encode_i32(
+    int32_t * const data,
+    int64_t n_stream,
+    int64_t stream_size,
+    uint32_t level,
+    int64_t * n_bytes,
+    int64_t * starts,
+    unsigned char ** bytes
+) {
+    return encode(
+        data,
+        n_stream,
+        stream_size,
+        1,
+        level,
+        n_bytes,
+        starts,
+        bytes
+    );
+}
+
+int encode_i32_threaded(
+    int32_t * const data,
+    int64_t n_stream,
+    int64_t stream_size,
+    uint32_t level,
+    int64_t * n_bytes,
+    int64_t * starts,
+    unsigned char ** bytes
+) {
+    return encode_threaded(
+        data,
+        n_stream,
+        stream_size,
+        1,
+        level,
+        n_bytes,
+        starts,
+        bytes
+    );
+}
+
+int encode_i64(
+    int64_t * const data,
+    int64_t n_stream,
+    int64_t stream_size,
+    uint32_t level,
+    int64_t * n_bytes,
+    int64_t * starts,
+    unsigned char ** bytes
+) {
+    int64_t n_elem = n_stream * stream_size;
+    int32_t * interleaved;
+    int err = get_interleaved(n_elem, data, &interleaved);
+    if (err != ERROR_NONE) {
+        return err;
+    }
+    copy_interleaved_64_to_32(n_elem, data, interleaved);
+    err = encode(
+        interleaved,
+        n_stream,
+        stream_size,
+        2,
+        level,
+        n_bytes,
+        starts,
+        bytes
+    );
+    free_interleaved(interleaved);
+    return err;
+}
+
+int encode_i64_threaded(
+    int64_t * const data,
+    int64_t n_stream,
+    int64_t stream_size,
+    uint32_t level,
+    int64_t * n_bytes,
+    int64_t * starts,
+    unsigned char ** bytes
+) {
+    int64_t n_elem = n_stream * stream_size;
+    int32_t * interleaved;
+    int err = get_interleaved(n_elem, data, &interleaved);
+    if (err != ERROR_NONE) {
+        return err;
+    }
+    copy_interleaved_64_to_32(n_elem, data, interleaved);
+    err = encode_threaded(
+        interleaved,
+        n_stream,
+        stream_size,
+        2,
+        level,
+        n_bytes,
+        starts,
+        bytes
+    );
+    free_interleaved(interleaved);
+    return err;
+}

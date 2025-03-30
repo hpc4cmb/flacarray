@@ -34,7 +34,9 @@ def distribute_and_verify(mpi_comm, n_elem, mpi_dist=None):
     """Compute or verify a distribution of elements across a communicator.
 
     If `mpi_dist` is specified, the contents are checked for consistency with
-    the specified communicator and number of elements.  If `mpi_dist`
+    the specified communicator and number of elements.  If `mpi_dist` is not
+    specified, it is computed from the size of the communicator and distributing
+    the elements uniformly across processes.
 
     Args:
         mpi_comm (MPI.Comm):  The MPI communicator (or None)
@@ -54,17 +56,21 @@ def distribute_and_verify(mpi_comm, n_elem, mpi_dist=None):
                 raise RuntimeError(msg)
             return mpi_dist
         if mpi_comm.size != len(mpi_dist):
-            raise RuntimeError(
-                "If specified, mpi_dist should have same length as comm size"
-            )
+            msg = f"If specified, mpi_dist (len={len(mpi_dist)}) should have same "
+            msg += f"length as comm size ({mpi_comm.size})"
+            raise RuntimeError(msg)
         if mpi_dist[0][0] != 0 or mpi_dist[-1][1] != n_elem:
-            raise RuntimeError(
-                "If specified, mpi_dist should span the full range of elements"
-            )
+            msg = f"If specified, mpi_dist ({mpi_dist[0][0]} ... {mpi_dist[-1][1]})"
+            msg += f" should span the full range of elements ({n_elem})"
+            raise RuntimeError(msg)
         for proc in range(1, mpi_comm.size):
             if mpi_dist[proc][0] != mpi_dist[proc - 1][1]:
                 raise RuntimeError(
                     "mpi_dist must have contiguous ranges of first, last (exclusive)"
+                )
+            if mpi_dist[proc][1] <= mpi_dist[proc][0]:
+                raise RuntimeError(
+                    f"mpi_dist has no data for process {proc}"
                 )
         # Everything checks out
         return mpi_dist
@@ -72,12 +78,15 @@ def distribute_and_verify(mpi_comm, n_elem, mpi_dist=None):
         # We are creating the distribution
         if mpi_comm is None:
             # One range
-            return [
-                (0, n_elem),
-            ]
+            return [(0, n_elem)]
         else:
             # Compute the mpi_dist- just uniform distribution
-            chunks = np.split(np.arange(n_elem, dtype=np.int64), mpi_comm.size)
+            chunks = np.array_split(np.arange(n_elem, dtype=np.int64), mpi_comm.size)
+            for proc, ch in enumerate(chunks):
+                if len(ch) == 0:
+                    msg = f"Cannot distribute {n_elem} streams among {mpi_comm.size}"
+                    msg += " processes."
+                    raise RuntimeError(msg)
             return [(x[0], x[-1] + 1) for x in chunks]
 
 
@@ -99,8 +108,13 @@ def global_array_properties(local_shape, mpi_comm):
     """
     props = dict()
     if mpi_comm is None:
-        props["shape"] = local_shape
-        props["dist"] = [(0, local_shape[0])]
+        if len(local_shape) == 1:
+            # Just one stream
+            props["shape"] = (1, local_shape[0])
+            props["dist"] = [(0, 1)]
+        else:
+            props["shape"] = local_shape
+            props["dist"] = [(0, local_shape[0])]
         return props
     all_shapes = mpi_comm.gather(local_shape, root=0)
     err = False

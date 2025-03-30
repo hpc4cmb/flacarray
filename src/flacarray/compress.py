@@ -5,7 +5,7 @@
 import numpy as np
 
 from .libflacarray import encode_flac
-from .utils import int64_to_int32, float_to_int32, function_timer
+from .utils import float_to_int, function_timer
 
 
 @function_timer
@@ -13,9 +13,15 @@ def array_compress(arr, level=5, quanta=None, precision=None, use_threads=False)
     """Compress a numpy array with optional floating point conversion.
 
     If `arr` is an int32 array, the returned stream offsets and gains will be None.
-    if `arr` is an int64 array, the stream offsets will be the integer value subtracted
-    when converting to int32.  Both float32 and float64 data will have floating point
-    offset and gain arrays returned.
+    if `arr` is an int64 array, the returned stream offsets and gains will be None and
+    the calling code is responsible for tracking that the compressed bytes are
+    associated with a 64bit stream.  Both float32 and float64 data will have floating
+    point offset and gain arrays returned.
+
+    The shape of the returned auxiliary arrays (starts, nbytes, etc) will have a shape
+    corresponding to the leading shape of the input array.  If the input array is a
+    single stream, the returned auxiliary information will be arrays with a single
+    element.
 
     Args:
         arr (numpy.ndarray):  The input array data.
@@ -55,17 +61,11 @@ def array_compress(arr, level=5, quanta=None, precision=None, use_threads=False)
     else:
         dquanta = None
 
-    if arr.dtype == np.dtype(np.int32):
+    if arr.dtype == np.dtype(np.int32) or arr.dtype == np.dtype(np.int64):
         (compressed, starts, nbytes) = encode_flac(arr, level, use_threads=use_threads)
         return (compressed, starts, nbytes, None, None)
-    elif arr.dtype == np.dtype(np.int64):
-        idata, ioff = int64_to_int32(arr)
-        (compressed, starts, nbytes) = encode_flac(
-            idata, level, use_threads=use_threads
-        )
-        return (compressed, starts, nbytes, ioff, None)
-    elif arr.dtype == np.dtype(np.float64) or arr.dtype == np.dtype(np.float32):
-        idata, foff, gains = float_to_int32(arr, quanta=dquanta, precision=precision)
+    elif arr.dtype == np.dtype(np.float32) or arr.dtype == np.dtype(np.float64):
+        idata, foff, gains = float_to_int(arr, quanta=dquanta, precision=precision)
         (compressed, starts, nbytes) = encode_flac(
             idata, level, use_threads=use_threads
         )

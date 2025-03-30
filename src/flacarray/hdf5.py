@@ -18,7 +18,7 @@ from .compress import array_compress
 from .hdf5_utils import have_hdf5, hdf5_use_serial, check_dataset_buffer_size
 from .io_common import receive_write_compressed
 from .mpi import global_array_properties, global_bytes
-from .utils import function_timer
+from .utils import function_timer, ensure_one_element
 
 
 class WriterHDF5:
@@ -68,14 +68,6 @@ class WriterHDF5:
     def gains(self):
         return self._gains
 
-    @property
-    def have_offsets(self):
-        return self._doffsets is not None
-
-    @property
-    def have_gains(self):
-        return self._gains is not None
-
     def save(self, dset, buf, mpi_comm, dslc, fslc):
         rank = 0
         if mpi_comm is not None:
@@ -112,6 +104,7 @@ def write_compressed(
     stream_offsets,
     stream_gains,
     compressed,
+    n_channels,
     local_nbytes,
     global_nbytes,
     global_process_nbytes,
@@ -130,6 +123,9 @@ def write_compressed(
     intentionally write the "flacarray_format_version" attribute to the top level
     group so that we can parse that and call the correct version of the read function.
 
+    In the case of a single stream, all auxiliary datasets will still contain an
+    array (of a single element).
+
     Args:
         hgrp (h5py.Group):  The Group to use.
         leading_shape (tuple):  Shape of the local leading dimensions.
@@ -138,9 +134,10 @@ def write_compressed(
         stream_starts (array):  The local starting byte offsets for each stream.
         global_stream_starts (array):  The global starting byte offsets for each stream.
         stream_nbytes (array):  The local number of bytes for each stream.
-        stream_offsets (array):  The offsets used in int32 conversion.
-        stream_gains (array):  The gains used in int32 conversion.
+        stream_offsets (array):  The offsets used in int conversion.
+        stream_gains (array):  The gains used in int conversion.
         compressed (array):  The compressed bytes.
+        n_channels (int):  The number of FLAC channels used (1 or 2).
         local_nbytes (int):  The total number of local compressed bytes.
         global_nbytes (int):  The total global compressed bytes.
         global_process_nbytes (list):  The number of compressed bytes on each process.
@@ -154,8 +151,8 @@ def write_compressed(
     if not have_hdf5:
         raise RuntimeError("h5py is not importable, cannot write to HDF5")
 
-    # Writer is currently using version 0
-    from .hdf5_load_v0 import hdf5_names as hnames
+    # Writer is currently using version 1
+    from .hdf5_load_v1 import hdf5_names as hnames
 
     comm = mpi_comm
 
@@ -174,11 +171,30 @@ def write_compressed(
     dsoff = None
     dsgain = None
 
+    aux_global_shape = global_leading_shape
+    aux_local_shape = leading_shape
+    if len(aux_global_shape) == 0:
+        # We have a single stream.  Promote all our auxiliary data
+        # to arrays if needed.
+        aux_global_shape = (1,)
+        aux_local_shape = (1,)
+        stream_starts = ensure_one_element(stream_starts, np.int64)
+        global_stream_starts = ensure_one_element(global_stream_starts, np.int64)
+        stream_nbytes = ensure_one_element(stream_nbytes, np.int64)
+        if stream_offsets is not None:
+            if n_channels == 2:
+                stream_offsets = ensure_one_element(stream_offsets, np.float64)
+                stream_gains = ensure_one_element(stream_gains, np.float64)
+            else:
+                stream_offsets = ensure_one_element(stream_offsets, np.float32)
+                stream_gains = ensure_one_element(stream_gains, np.float32)
+
     if rank == 0 or not use_serial:
         # This process is participating.  Write the format version string
         # to the top-level group.
-        hgrp.attrs["flacarray_format_version"] = 0
+        hgrp.attrs["flacarray_format_version"] = "1"
         hgrp.attrs["flacarray_software_version"] = flacarray_version
+        hgrp.attrs[hnames["flac_channels"]] = f"{n_channels}"
 
         # Create the datasets.  We create the start bytes and auxiliary datasets first
         # and attach any metadata keys to the start bytes dataset (which is always
@@ -190,7 +206,7 @@ def write_compressed(
         # The starting bytes of each stream
         dstarts = hgrp.create_dataset(
             hnames["stream_starts"],
-            global_leading_shape,
+            aux_global_shape,
             dtype=np.int64,
         )
         dstarts.attrs[hnames["stream_size"]] = stream_size
@@ -198,7 +214,7 @@ def write_compressed(
         # The number of bytes in each stream
         dbytes = hgrp.create_dataset(
             hnames["stream_bytes"],
-            global_leading_shape,
+            aux_global_shape,
             dtype=np.int64,
         )
 
@@ -207,7 +223,7 @@ def write_compressed(
         if stream_offsets is not None:
             dsoff = hgrp.create_dataset(
                 hnames["stream_offsets"],
-                global_leading_shape,
+                aux_global_shape,
                 dtype=stream_offsets.dtype,
             )
         else:
@@ -215,7 +231,7 @@ def write_compressed(
         if stream_gains is not None:
             dsgain = hgrp.create_dataset(
                 hnames["stream_gains"],
-                global_leading_shape,
+                aux_global_shape,
                 dtype=stream_gains.dtype,
             )
         else:
@@ -231,8 +247,8 @@ def write_compressed(
     if use_serial:
         # Use the common writing function
         writer = WriterHDF5(
-            global_stream_starts,
-            stream_nbytes,
+            global_stream_starts.reshape(aux_local_shape),
+            stream_nbytes.reshape(aux_local_shape),
             compressed,
             stream_offsets,
             stream_gains,
@@ -246,6 +262,7 @@ def write_compressed(
             writer,
             global_leading_shape,
             global_process_nbytes,
+            n_channels,
             mpi_comm=mpi_comm,
             mpi_dist=mpi_dist,
         )
@@ -262,13 +279,14 @@ def write_compressed(
             comp_doff.append(coff)
             coff += global_process_nbytes[proc]
 
-        dslc = tuple([slice(0, x) for x in leading_shape])
+        dslc = tuple([slice(0, x) for x in aux_local_shape])
         hslc = (
             slice(
                 mpi_dist[rank][0],
-                mpi_dist[rank][0] + leading_shape[0],
+                mpi_dist[rank][0] + aux_local_shape[0],
             ),
-        ) + tuple([slice(0, x) for x in leading_shape[1:]])
+        ) + tuple([slice(0, x) for x in aux_local_shape[1:]])
+
         with dstarts.collective:
             dstarts.write_direct(global_stream_starts, dslc, hslc)
         with dbytes.collective:
@@ -328,6 +346,12 @@ def write_array(
     global_shape = global_props["shape"]
     mpi_dist = global_props["dist"]
 
+    # Get the number of channels
+    if arr.dtype == np.dtype(np.int64) or arr.dtype == np.dtype(np.float64):
+        n_channels = 2
+    else:
+        n_channels = 1
+
     # Compress our local piece of the array
     compressed, starts, nbytes, offsets, gains = array_compress(
         arr, level=level, quanta=quanta, precision=precision, use_threads=use_threads
@@ -338,11 +362,12 @@ def write_array(
         local_nbytes, starts, mpi_comm
     )
     stream_size = arr.shape[-1]
-    leading_shape = starts.shape
-    if len(global_shape) == 1:
-        global_leading_shape = (1,)
+
+    if len(arr.shape) == 1:
+        leading_shape = (1,)
     else:
-        global_leading_shape = global_shape[:-1]
+        leading_shape = arr.shape[:-1]
+    global_leading_shape = global_shape[:-1]
 
     write_compressed(
         hgrp,
@@ -355,6 +380,7 @@ def write_array(
         offsets,
         gains,
         compressed,
+        n_channels,
         local_nbytes,
         global_nbytes,
         global_proc_bytes,
@@ -488,4 +514,5 @@ def read_array(
         mpi_comm=mpi_comm,
         mpi_dist=mpi_dist,
         use_threads=use_threads,
+        no_flatten=False,
     )

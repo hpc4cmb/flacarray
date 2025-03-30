@@ -8,10 +8,12 @@ python_sources = [
     'hdf5.py',
     'hdf5_utils.py',
     'hdf5_load_v0.py',
+    'hdf5_load_v1.py',
     'mpi.py',
     'demo.py',
     'zarr.py',
     'zarr_load_v0.py',
+    'zarr_load_v1.py',
     'io_common.py',
 ]
 

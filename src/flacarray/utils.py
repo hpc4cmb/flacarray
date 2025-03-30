@@ -11,12 +11,10 @@ from functools import wraps
 import numpy as np
 
 from .libflacarray import (
-    wrap_int64_to_int32,
     wrap_float32_to_int32,
-    wrap_float64_to_int32,
-    wrap_int32_to_int64,
+    wrap_float64_to_int64,
     wrap_int32_to_float32,
-    wrap_int32_to_float64,
+    wrap_int64_to_float64,
 )
 
 
@@ -177,53 +175,80 @@ def function_timer_stackskip(f):
     return df
 
 
-@function_timer
-def int64_to_int32(data):
-    """Convert an array of 64bit integer streams to 32bit.
+def ensure_one_element(input, dtype=None):
+    """Helper function to check dimension and dtype.
 
-    For each stream, this finds the 64bit integer mean and subtracts it.  It then
-    checks that the stream values will fit in a 32bit integer representation.  If you
-    want to treat the integer values as floating point data, use float_to_int32
-    instead.
-
-    The offset array returned will have the same shape as the leading dimensions of
-    the input array.
+    If the input is an array, it is verified to be a single element with the
+    specified dtype.  If the input is a scalar, it is promoted to an array
+    with the specified type.
 
     Args:
-        data (array):  The 64bit integer array.
+        input (array, scalar): The input value
+        dtype (np.dtype): The dtype to check
 
     Returns:
-        (tuple):  The (integer data, offset array)
+        (array): The original array or a new array.
 
     """
-    if data.dtype != np.dtype(np.int64):
-        raise ValueError("Only int64 data is supported by this function")
-
-    leading_shape = data.shape[:-1]
-    if len(leading_shape) == 0:
-        n_stream = 1
+    if isinstance(input, np.ndarray):
+        # This is an array, should be 1D
+        if input.shape != (1,):
+            msg = "Input array does not have a single element."
+            raise ValueError(msg)
+        if dtype is not None:
+            if input.dtype != np.dtype(dtype):
+                msg = f"Input has dtype {input.dtype}, not {dtype}"
+                raise ValueError(msg)
+        result = input
     else:
-        n_stream = np.prod(leading_shape)
-    stream_size = data.shape[-1]
+        # Promote scalar to array
+        if dtype is None:
+            raise ValueError("Input is a scalar, dtype must be specified")
+        result = np.array([input], dtype=dtype)
+    return result
 
-    output, offsets = wrap_int64_to_int32(
-        data.reshape((-1,)),
-        n_stream,
-        stream_size,
-    )
 
-    return (
-        output.reshape(data.shape),
-        offsets.reshape(leading_shape),
-    )
+def compressed_dtype(n_channel, offsets, gains):
+    """Helper function to determine dtype of compressed data.
+
+    At several places in the code (for example when reading compressed data),
+    we have access to the number of FLAC channels and the offset and gain arrays.
+    This function returns the corresponding dtype.
+
+    Args:
+        n_channel (int):  The number of FLAC channels.
+        offsets (array):  The offsets or None.
+        gains (array):  The gains or None.
+
+    Returns:
+        (dtype):  The dtype of the decompressed data.
+
+    """
+    if n_channel == 2:
+        # 64bit
+        if offsets is None or gains is None:
+            # integer
+            return np.dtype(np.int64)
+        else:
+            # float
+            return np.dtype(np.float64)
+    else:
+        # 32bit
+        if offsets is None or gains is None:
+            # integer
+            return np.dtype(np.int32)
+        else:
+            # float
+            return np.dtype(np.float32)
 
 
 @function_timer
-def float_to_int32(data, quanta=None, precision=None):
+def float_to_int(data, quanta=None, precision=None):
     """Convert floating point data to integers.
 
     This function subtracts the mean and rescales data before rounding to 32bit
-    integer values.
+    or 64bit integer values.  32bit floats are converted to 32bit integers and
+    64bit floats are converted to 64bit integers.
 
     Args:
         data (array):  The floating point data.
@@ -281,28 +306,39 @@ def float_to_int32(data, quanta=None, precision=None):
             quanta.reshape((-1,)).astype(data.dtype),
         )
     else:
-        output, offsets, gains = wrap_float64_to_int32(
+        output, offsets, gains = wrap_float64_to_int64(
             data.reshape((-1,)),
             n_stream,
             stream_size,
             quanta.reshape((-1,)).astype(data.dtype),
         )
 
-    return (
-        output.reshape(data.shape),
-        offsets.reshape(leading_shape),
-        gains.reshape(leading_shape),
-    )
+    if len(leading_shape) == 0:
+        # Single input stream
+        return (
+            output.reshape(data.shape),
+            offsets.reshape((-1,)),
+            gains.reshape((-1,)),
+        )
+    else:
+        # Reshape flat arrays to the leading shape
+        return (
+            output.reshape(data.shape),
+            offsets.reshape(leading_shape),
+            gains.reshape(leading_shape),
+        )
 
 
 @function_timer
-def int32_to_float(idata, offset, gain):
+def int_to_float(idata, offset, gain):
     """Restore floating point data from integers.
 
     The gain and offset are applied and the resulting data is returned.
+    32bit integer data is converted to 32bit floats and 64bit integer data
+    is converted to 64bit floats.
 
     Args:
-        idata (array):  The 32bit integer data.
+        idata (array):  The 32bit or 64bit integer data.
         offset (array):  The offset used in the original conversion.
         gain (array):  The gain used in the original conversion.
 
@@ -310,25 +346,36 @@ def int32_to_float(idata, offset, gain):
         (array):  The restored float data.
 
     """
-    if idata.dtype != np.dtype(np.int32):
-        raise ValueError("Input data should be int32")
+    if idata.dtype != np.dtype(np.int32) and idata.dtype != np.dtype(np.int64):
+        raise ValueError("Input data should be int32 or int64")
+    if idata.dtype == np.dtype(np.int32):
+        is_int64 = False
+    else:
+        is_int64 = True
 
     leading_shape = idata.shape[:-1]
-    if len(leading_shape) == 0:
+    if len(leading_shape) == 0 or (len(leading_shape) == 1 and leading_shape[0] == 1):
+        # Promote scalar values if needed.
         n_stream = 1
+        if is_int64:
+            offset = ensure_one_element(offset, np.float64)
+            gain = ensure_one_element(gain, np.float64)
+        else:
+            offset = ensure_one_element(offset, np.float32)
+            gain = ensure_one_element(gain, np.float32)
     else:
         n_stream = np.prod(leading_shape)
+        if offset.shape != leading_shape:
+            msg = f"Offset array has shape {offset.shape}, expected "
+            msg += f"shape {leading_shape}"
+            raise ValueError(msg)
+        if gain.shape != leading_shape:
+            msg = f"Gain array has shape {gain.shape}, expected "
+            msg += f"shape {leading_shape}"
+            raise ValueError(msg)
     stream_size = idata.shape[-1]
 
-    if offset.shape != leading_shape:
-        msg = f"Offset array has shape {offset.shape}, expected shape {leading_shape}"
-        raise ValueError(msg)
-
-    if gain.shape != leading_shape:
-        msg = f"Gain array has shape {gain.shape}, expected shape {leading_shape}"
-        raise ValueError(msg)
-
-    if gain.dtype == np.dtype(np.float32):
+    if idata.dtype == np.dtype(np.int32):
         result = wrap_int32_to_float32(
             idata.reshape((-1,)),
             n_stream,
@@ -337,13 +384,14 @@ def int32_to_float(idata, offset, gain):
             gain.reshape((-1,)),
         )
     else:
-        result = wrap_int32_to_float64(
+        result = wrap_int64_to_float64(
             idata.reshape((-1,)),
             n_stream,
             stream_size,
             offset.reshape((-1,)),
             gain.reshape((-1,)),
         )
+    # The C code returns a flat-packed array of streams
     return result.reshape(idata.shape)
 
 
@@ -371,7 +419,7 @@ def keep_select(keep, stream_starts, stream_nbytes):
     starts = list()
     nbytes = list()
     indices = list()
-    it = np.nditer(keep, flags=["multi_index"])
+    it = np.nditer(keep, order="C", flags=["multi_index"])
     for st in it:
         idx = it.multi_index
         if st:

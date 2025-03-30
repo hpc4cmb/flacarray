@@ -2,7 +2,8 @@
 // All rights reserved.  Use of this source code is governed by
 // a BSD-style license that can be found in the LICENSE file.
 
-#include "flacarray.h"
+#include <flacarray.h>
+#include <stdio.h>
 
 
 ArrayUint8 * create_array_uint8(int64_t start_size) {
@@ -75,119 +76,79 @@ int resize_array_uint8(ArrayUint8 * obj, int64_t new_size) {
     return ERROR_NONE;
 }
 
-ArrayInt32 * create_array_int32(int64_t start_size) {
-    ArrayInt32 * ret = (ArrayInt32 *)malloc(sizeof(ArrayInt32));
-    if (ret == NULL) {
-        return NULL;
+// Check if the current machine is little endian.
+bool is_little_endian() {
+    int test = 1;
+    if (*((char *)(&test)) == 1) {
+        return true;
+    } else {
+        return false;
     }
-    (*ret).size = 0;
-    (*ret).n_elem = 0;
-    (*ret).data = NULL;
-    if (start_size > 0) {
-        resize_array_int32(ret, start_size);
-    }
-    return ret;
 }
 
-void destroy_array_int32(ArrayInt32 * obj) {
-    if (obj != NULL) {
-        if (obj->data != NULL) {
-            free(obj->data);
+// Union used to unpack the high and low 32bits from a
+// big endian int64.  Note that the FLAC library itself already
+// handles endian conversion within each 32bit value, so we don't
+// need to do any byte-swapping here.  We are just ensuring that
+// the two channels represent the same things (high and low order
+// 32bits) across architectures.
+typedef union {
+    int64_t value;
+    struct {
+        int32_t high, low;
+    };
+} int64_hilow;
+
+// If necessary (on big-endian systems), allocate a 32bit buffer
+// and fill with swapped interleaved values so that the first channel
+// is always the lower-order 32bit value.
+int get_interleaved(int64_t n_elem, int64_t const * data, int32_t ** interleaved) {
+    if (is_little_endian()) {
+        // No separate memory buffer needed
+        (*interleaved) = (int32_t *)data;
+    } else {
+        // Have to allocate a buffer to hold the swapped values.
+        (*interleaved) = (int32_t *)malloc(2 * n_elem * sizeof(int32_t));
+        if ((*interleaved) == NULL) {
+            // Allocation failed
+            return ERROR_ALLOC;
         }
-        free(obj);
+    }
+    return ERROR_NONE;
+}
+
+// Copy data to / from interleaved format
+
+void copy_interleaved_64_to_32(int64_t n_elem, int64_t * input, int32_t * output) {
+    int64_hilow * view = (int64_hilow *)input;
+    if (! is_little_endian()) {
+        for (int64_t i = 0; i < n_elem; ++i) {
+            output[2 * i] = view[i].low;
+            output[2 * i + 1] = view[i].high;
+        }
     }
     return;
 }
 
-int resize_array_int32(ArrayInt32 * obj, int64_t new_size) {
-    int64_t try_size;
-    int32_t * temp_ptr;
-    if (obj != NULL) {
-        if (obj->data == NULL) {
-            // Not yet allocated
-            obj->data = (int32_t *)malloc(new_size * sizeof(int32_t));
-            if (obj->data == NULL) {
-                // Allocation failed, set size to zero.
-                obj->size = 0;
-                obj->n_elem = 0;
-            } else {
-                // Allocation worked.
-                obj->size = new_size;
-                obj->n_elem = new_size;
-            }
-        } else {
-            // Data already allocated, check current size
-            if (obj->size >= new_size) {
-                // We already have enough space
-                obj->n_elem = new_size;
-            } else {
-                // We need to re-allocate.  Grow our size exponentially
-                // to reduce the number of future allocations.
-                try_size = obj->size;
-                while (try_size < new_size) {
-                    try_size *= 2;
-                }
-                temp_ptr = (int32_t *)realloc(
-                    (void*)(obj->data),
-                    try_size * sizeof(int32_t)
-                );
-                if (temp_ptr != NULL) {
-                    // Realloc success
-                    obj->data = temp_ptr;
-                    obj->size = try_size;
-                    obj->n_elem = new_size;
-                }
-            }
-        }
-    } else {
-        return ERROR_ALLOC;
-    }
-    return ERROR_NONE;
-}
-
-
-int int64_to_int32(
-    int64_t const * input,
-    int64_t n_stream,
-    int64_t stream_size,
-    int32_t * output,
-    int64_t * offsets
-) {
-    // FLAC uses an extra bit, so +/- 2^30 is the max range.
-    int64_t flac_max = 1073741824;
-
-    int64_t smin;
-    int64_t smax;
-    int64_t sindx;
-    int64_t sval;
-    int64_t stemp;
-    for (int64_t istream = 0; istream < n_stream; ++istream) {
-        smin = input[istream * stream_size];
-        smax = input[istream * stream_size];
-        for (int64_t isamp = 1; isamp < stream_size; ++isamp) {
-            sindx = istream * stream_size + isamp;
-            sval = input[sindx];
-            if (sval < smin) {
-                smin = sval;
-            }
-            if (sval > smax) {
-                smax = sval;
-            }
-        }
-        offsets[istream] = (int64_t)((0.5 * (double)(smin + smax)) + 0.5);
-        for (int64_t isamp = 0; isamp < stream_size; ++isamp) {
-            sindx = istream * stream_size + isamp;
-            stemp = input[sindx] - offsets[istream];
-            if ((stemp > flac_max) || (stemp < -flac_max)) {
-                return ERROR_CONVERT_TYPE;
-            } else {
-                output[sindx] = (int32_t)stemp;
-            }
+void copy_interleaved_32_to_64(int64_t n_elem, int32_t * input, int64_t * output) {
+    int64_hilow * view = (int64_hilow *)output;
+    if (! is_little_endian()) {
+        for (int64_t i = 0; i < n_elem; ++i) {
+            view[i].low = input[2 * i];
+            view[i].high = input[2 * i + 1];
         }
     }
-    return ERROR_NONE;
+    return;
 }
 
+// If the interleaved buffer was previously allocated, free it.
+void free_interleaved(int32_t * interleaved) {
+    if (! is_little_endian()) {
+        // Free buffer
+        free(interleaved);
+    }
+    return;
+}
 
 int float32_to_int32(
     float const * input,
@@ -265,18 +226,19 @@ int float32_to_int32(
     return ERROR_NONE;
 }
 
-
-int float64_to_int32(
+int float64_to_int64(
     double const * input,
     int64_t n_stream,
     int64_t stream_size,
     double const * quanta,
-    int32_t * output,
+    int64_t * output,
     double * offsets,
     double * gains
 ) {
-    // FLAC uses an extra bit, so +/- 2^30 is the max range.
-    int64_t flac_max = 1073741824;
+    // FLAC uses an extra bit, so +/- 2^62 is the max range.
+    uint64_t zero = 0;
+    uint64_t all_ones = ~(zero);
+    int64_t flac_max = (int64_t)(all_ones >> 2);
 
     double smin;
     double smax;
@@ -336,33 +298,14 @@ int float64_to_int32(
         for (int64_t isamp = 0; isamp < stream_size; ++isamp) {
             sindx = istream * stream_size + isamp;
             stemp = input[sindx] - offsets[istream];
-            output[sindx] = (int32_t)(gains[istream] * stemp + 0.5);
+            output[sindx] = (int64_t)(gains[istream] * stemp + 0.5);
         }
     }
     return ERROR_NONE;
 }
 
-
-void int32_to_int64(
-    int32_t const * input,
-    int64_t n_stream,
-    int64_t stream_size,
-    int64_t const * offsets,
-    int64_t * output
-) {
-    int64_t sindx;
-    for (int64_t istream = 0; istream < n_stream; ++istream) {
-        for (int64_t isamp = 0; isamp < stream_size; ++isamp) {
-            sindx = istream * stream_size + isamp;
-            output[sindx] = offsets[istream] + (int64_t)input[sindx];
-        }
-    }
-    return;
-}
-
-
-void int32_to_float64(
-    int32_t const * input,
+void int64_to_float64(
+    int64_t const * input,
     int64_t n_stream,
     int64_t stream_size,
     double const * offsets,
@@ -380,7 +323,6 @@ void int32_to_float64(
     }
     return;
 }
-
 
 void int32_to_float32(
     int32_t const * input,
