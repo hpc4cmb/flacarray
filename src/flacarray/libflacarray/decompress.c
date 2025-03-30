@@ -12,14 +12,27 @@
 
 typedef struct {
     unsigned char const * input;
+    // Total number of streams
     int64_t n_stream;
+    // The number of samples to decode from all streams
     int64_t n_decode;
+    // The number of channels in a single sample of a single stream
+    uint32_t n_channels;
+    // The current stream that is being decoded
     int64_t cur_stream;
+    // The starting byte of the current stream in the compressed input
     int64_t stream_start;
+    // The ending byte of the current stream in the compressed input
     int64_t stream_end;
+    // The current byte position in the compressed input
     int64_t stream_pos;
+    // The number of decompressed samples processed so far in this stream
     int64_t decomp_nelem;
+    // The decompressed and interleaved output for the current stream.  This
+    // points to the beginning of the output stream in the larger output
+    // buffer, and each stream has n_decode * n_channels int32 values.
     int32_t * decompressed;
+    // The current error state
     int32_t err;
 } dec_callback_data;
 
@@ -79,7 +92,9 @@ FLAC__StreamDecoderReadStatus dec_read_callback(
 
 
 // Write callback function, called by the decoder to process the output
-// decompressed integers.
+// decompressed integers.  This will be called on each frame, and the
+// input buffer is an array of pointers, one per channel.  We take the
+// data from each channel and interleave these into the extracted data.
 FLAC__StreamDecoderWriteStatus dec_write_callback(
     const FLAC__StreamDecoder * decoder,
     const FLAC__Frame * frame,
@@ -90,22 +105,28 @@ FLAC__StreamDecoderWriteStatus dec_write_callback(
     int64_t nelem = callback_data->decomp_nelem;
     int64_t n_decode = callback_data->n_decode;
     int32_t * decomp = callback_data->decompressed;
+    uint32_t n_chan = callback_data->n_channels;
+
+    // The maximum number of samples in each channel
     uint32_t blocksize = frame->header.blocksize;
 
-    // The number of bytes to copy might be smaller than blocksize, if we are on the
+    // The number of samples to copy might be smaller than blocksize, if we are on the
     // last block.
     int64_t n_copy = blocksize;
     if (nelem + blocksize > n_decode) {
         n_copy = n_decode - nelem;
     }
 
-    memcpy(
-        (void*)(decomp + nelem),
-        (void*)buffer[0],
-        n_copy * sizeof(int32_t)
-    );
+    // Copy data from all channels into our interleaved output buffer.
+    int64_t offset;
+    for (uint32_t chan = 0; chan < n_chan; ++chan) {
+        for (int32_t isamp = 0; isamp < n_copy; ++isamp) {
+            offset = n_chan * (nelem + isamp);
+            decomp[offset + chan] = buffer[chan][isamp];
+        }
+    }
 
-    // Increment our number of decoded elements
+    // Increment our number of decoded samples
     callback_data->decomp_nelem += n_copy;
 
     return FLAC__STREAM_DECODER_WRITE_STATUS_CONTINUE;
@@ -208,6 +229,7 @@ int decode(
     int64_t * const nbytes,
     int64_t n_stream,
     int64_t stream_size,
+    uint32_t n_channels,
     int64_t first_sample,
     int64_t last_sample,
     int32_t * data,
@@ -246,6 +268,7 @@ int decode(
         callback_data.input = bytes;
         callback_data.n_stream = n_stream;
         callback_data.n_decode = n_decode;
+        callback_data.n_channels = n_channels;
         callback_data.err = ERROR_NONE;
 
         #pragma omp for schedule(static)
@@ -260,7 +283,7 @@ int decode(
             callback_data.stream_pos = starts[istream];
             callback_data.decomp_nelem = 0;
             // Set the output buffer to the address of the beginning of this stream.
-            callback_data.decompressed = data + n_decode * istream;
+            callback_data.decompressed = data + istream * n_decode * n_channels;
 
             decoder = FLAC__stream_decoder_new();
 
@@ -321,3 +344,64 @@ int decode(
     return errors;
 }
 
+
+// Helper functions for int32 and int64
+
+int decode_i32 (
+    unsigned char * const bytes,
+    int64_t * const starts,
+    int64_t * const nbytes,
+    int64_t n_stream,
+    int64_t stream_size,
+    int64_t first_sample,
+    int64_t last_sample,
+    int32_t * data,
+    bool use_threads
+) {
+    return decode(
+        bytes,
+        starts,
+        nbytes,
+        n_stream,
+        stream_size,
+        1,
+        first_sample,
+        last_sample,
+        data,
+        use_threads
+    );
+}
+
+int decode_i64 (
+    unsigned char * const bytes,
+    int64_t * const starts,
+    int64_t * const nbytes,
+    int64_t n_stream,
+    int64_t stream_size,
+    int64_t first_sample,
+    int64_t last_sample,
+    int64_t * data,
+    bool use_threads
+) {
+    int64_t n_elem = n_stream * stream_size;
+    int32_t * interleaved;
+    int err = get_interleaved(n_elem, data, &interleaved);
+    if (err != ERROR_NONE) {
+        return err;
+    }
+    err = decode(
+        bytes,
+        starts,
+        nbytes,
+        n_stream,
+        stream_size,
+        2,
+        first_sample,
+        last_sample,
+        interleaved,
+        use_threads
+    );
+    copy_interleaved_32_to_64(n_elem, interleaved, data);
+    free_interleaved(interleaved);
+    return err;
+}

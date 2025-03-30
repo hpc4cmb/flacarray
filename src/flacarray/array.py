@@ -29,7 +29,7 @@ class FlacArray:
     stream in the overall bytes array.  The shape of the starting array corresponds
     to the shape of the leading, un-compressed dimensions of the original array.
 
-    The input data is converted to 32bit integers.  The "quanta" value is used
+    The input data is converted to 32bit or 64bit integers.  The "quanta" value is used
     for floating point data conversion and represents the floating point increment
     for a single integer value.  If quanta is None, each stream is scaled independently
     based on its data range.  If quanta is a scalar, all streams are scaled with the
@@ -42,20 +42,19 @@ class FlacArray:
     The following rules specify the data conversion that is performed depending on
     the input type:
 
-    * int32:  No conversion.
+    * int32:  No conversion.  Compressed to single channel FLAC bytestream.
 
-    * int64:  Subtract the integer closest to the mean, then truncate to lower
-        32 bits, and check that the higher bits were zero.
+    * int64:  No conversion.  Compressed to 2-channel (stereo) FLAC bytestream.
 
     * float32:  Subtract the mean and scale data based on the quanta value (see
         above).  Then round to nearest 32bit integer.
 
     * float64:  Subtract the mean and scale data based on the quanta value (see
-        above).  Then round to nearest 32bit integer.
+        above).  Then round to nearest 64bit integer.
 
-    After conversion to 32bit integers, each stream's data is separately compressed
-    into a sequence of FLAC bytes, which is appended to the bytestream.  The offset in
-    bytes for each stream is recorded.
+    After conversion to integers, each stream's data is separately compressed into a
+    sequence of FLAC bytes, which is appended to the bytestream.  The offset in bytes
+    for each stream is recorded.
 
     A FlacArray is only constructed directly when making a copy.  Use the class methods
     to create FlacArrays from numpy arrays or on-disk representations.
@@ -71,6 +70,7 @@ class FlacArray:
         shape=None,
         global_shape=None,
         compressed=None,
+        is_int64=None,
         stream_starts=None,
         stream_nbytes=None,
         stream_offsets=None,
@@ -84,6 +84,7 @@ class FlacArray:
             self._shape = copy.deepcopy(other._shape)
             self._global_shape = copy.deepcopy(other._global_shape)
             self._compressed = copy.deepcopy(other._compressed)
+            self._is_int64 = other._is_int64
             self._stream_starts = copy.deepcopy(other._stream_starts)
             self._stream_nbytes = copy.deepcopy(other._stream_nbytes)
             self._stream_offsets = copy.deepcopy(other._stream_offsets)
@@ -97,6 +98,7 @@ class FlacArray:
             self._shape = shape
             self._global_shape = global_shape
             self._compressed = compressed
+            self._is_int64 = is_int64
             self._stream_starts = stream_starts
             self._stream_nbytes = stream_nbytes
             self._stream_offsets = stream_offsets
@@ -124,17 +126,24 @@ class FlacArray:
         if self._stream_offsets is not None:
             if self._stream_gains is not None:
                 # This is floating point data
-                if self._stream_gains.dtype == np.dtype(np.float64):
+                if self._is_int64:
                     self._typestr = "float64"
                 else:
                     self._typestr = "float32"
             else:
-                # This is int64 data
-                self._typestr = "int64"
+                raise RuntimeError("Offsets and gains must both be None or not None")
         else:
-            self._typestr = "int32"
+            if self._is_int64:
+                self._typestr = "int64"
+            else:
+                self._typestr = "int32"
 
     # Shapes of decompressed array
+
+    @property
+    def typestr(self):
+        """A string representation of the original data type."""
+        return self._typestr
 
     @property
     def shape(self):
@@ -288,6 +297,7 @@ class FlacArray:
             keep=keep,
             first_stream_sample=first,
             last_stream_sample=last,
+            is_int64=self._is_int64,
         )
         return arr
 
@@ -312,6 +322,9 @@ class FlacArray:
     def __eq__(self, other):
         if self._shape != other._shape:
             log.debug(f"other shape {other._shape} != {self._shape}")
+            return False
+        if self._typestr != other._typestr:
+            log.debug(f"other typestr {other._typestr} != {self._typestr}")
             return False
         if self._global_shape != other._global_shape:
             msg = f"other global_shape {other._global_shape} != {self._global_shape}"
@@ -411,6 +424,7 @@ class FlacArray:
             first_stream_sample=first_samp,
             last_stream_sample=last_samp,
             use_threads=use_threads,
+            is_int64=self._is_int64,
         )
         if keep is not None and keep_indices:
             return (arr, indices)
@@ -447,6 +461,11 @@ class FlacArray:
         global_shape = global_props["shape"]
         mpi_dist = global_props["dist"]
 
+        if arr.dtype == np.dtype(np.int64) or arr.dtype == np.dtype(np.float64):
+            is_int64 = True
+        else:
+            is_int64 = False
+
         # Compress our local piece of the array
         compressed, starts, nbytes, offsets, gains = array_compress(
             arr,
@@ -461,6 +480,7 @@ class FlacArray:
             shape=arr.shape,
             global_shape=global_shape,
             compressed=compressed,
+            is_int64=is_int64,
             stream_starts=starts,
             stream_nbytes=nbytes,
             stream_offsets=offsets,
@@ -489,6 +509,10 @@ class FlacArray:
             None
 
         """
+        if self._is_int64:
+            n_channels = 2
+        else:
+            n_channels = 1
         hdf5_write_compressed(
             hgrp,
             self._leading_shape,
@@ -500,6 +524,7 @@ class FlacArray:
             self._stream_offsets,
             self._stream_gains,
             self._compressed,
+            n_channels,
             self._compressed.nbytes,
             self._global_nbytes,
             self._global_proc_nbytes,
@@ -551,6 +576,7 @@ class FlacArray:
             local_shape,
             global_shape,
             compressed,
+            n_channels,
             stream_starts,
             stream_nbytes,
             stream_offsets,
@@ -569,6 +595,7 @@ class FlacArray:
             shape=local_shape,
             global_shape=global_shape,
             compressed=compressed,
+            is_int64=(n_channels == 2),
             stream_starts=stream_starts,
             stream_nbytes=stream_nbytes,
             stream_offsets=stream_offsets,
@@ -593,6 +620,10 @@ class FlacArray:
             None
 
         """
+        if self._is_int64:
+            n_channels = 2
+        else:
+            n_channels = 1
         zarr_write_compressed(
             zgrp,
             self._leading_shape,
@@ -604,6 +635,7 @@ class FlacArray:
             self._stream_offsets,
             self._stream_gains,
             self._compressed,
+            n_channels,
             self._compressed.nbytes,
             self._global_nbytes,
             self._global_proc_nbytes,
@@ -653,6 +685,7 @@ class FlacArray:
             local_shape,
             global_shape,
             compressed,
+            n_channels,
             stream_starts,
             stream_nbytes,
             stream_offsets,
@@ -671,6 +704,7 @@ class FlacArray:
             shape=local_shape,
             global_shape=global_shape,
             compressed=compressed,
+            is_int64=(n_channels == 2),
             stream_starts=stream_starts,
             stream_nbytes=stream_nbytes,
             stream_offsets=stream_offsets,

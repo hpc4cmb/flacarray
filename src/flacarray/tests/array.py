@@ -35,7 +35,9 @@ class ArrayTest(unittest.TestCase):
             .astype(np.int32)
         )
 
-        comp_i32, starts_i32, nbytes_i32, off_i32, gain_i32 = array_compress(data_i32, level=5)
+        comp_i32, starts_i32, nbytes_i32, off_i32, gain_i32 = array_compress(
+            data_i32, level=5
+        )
         self.assertTrue(off_i32 is None)
         self.assertTrue(gain_i32 is None)
 
@@ -52,18 +54,20 @@ class ArrayTest(unittest.TestCase):
         )
         self.assertTrue(np.array_equal(check_slc_i32, data_i32[:, :, first:last]))
 
-        # int64 data.  First try a case that should work, with all values inside
-        # the 32bit range.
+        # int64 data.
 
         data_i64 = rng.integers(
-            low=-(2**30), high=2**29, size=flatsize, dtype=np.int64
+            low=-(2**60), high=2**62, size=flatsize, dtype=np.int64
         ).reshape(data_shape)
 
-        comp_i64, starts_i64, nbytes_i64, off_i64, gain_i64 = array_compress(data_i64, level=5)
+        comp_i64, starts_i64, nbytes_i64, off_i64, gain_i64 = array_compress(
+            data_i64, level=5
+        )
+        self.assertTrue(off_i64 is None)
         self.assertTrue(gain_i64 is None)
 
         check_i64 = array_decompress(
-            comp_i64, data_shape[-1], starts_i64, nbytes_i64, stream_offsets=off_i64
+            comp_i64, data_shape[-1], starts_i64, nbytes_i64, is_int64=True
         )
         self.assertTrue(np.array_equal(check_i64, data_i64))
 
@@ -72,29 +76,18 @@ class ArrayTest(unittest.TestCase):
             data_shape[-1],
             starts_i64,
             nbytes_i64,
-            stream_offsets=off_i64,
             first_stream_sample=first,
             last_stream_sample=last,
+            is_int64=True,
         )
         self.assertTrue(np.array_equal(check_slc_i64, data_i64[:, :, first:last]))
-
-        # Now try a case that should NOT work.
-
-        data_i64 = rng.integers(
-            low=-(2**60), high=2**62, size=flatsize, dtype=np.int64
-        ).reshape(data_shape)
-
-        try:
-            comp_i64, starts_i64, nbytes_i64, off_i64, gain_i64 = array_compress(data_i64, level=5)
-            print("Failed to catch truncation of int64 data")
-            self.assertTrue(False)
-        except RuntimeError:
-            pass
 
         # float32 data
 
         data_f32 = create_fake_data(data_shape, 1.0).astype(np.float32)
-        comp_f32, starts_f32, nbytes_f32, off_f32, gain_f32 = array_compress(data_f32, level=5)
+        comp_f32, starts_f32, nbytes_f32, off_f32, gain_f32 = array_compress(
+            data_f32, level=5
+        )
         check_f32 = array_decompress(
             comp_f32,
             data_shape[-1],
@@ -123,7 +116,9 @@ class ArrayTest(unittest.TestCase):
 
         data_f64 = create_fake_data(data_shape, 1.0)
 
-        comp_f64, starts_f64, nbytes_f64, off_f64, gain_f64 = array_compress(data_f64, level=5)
+        comp_f64, starts_f64, nbytes_f64, off_f64, gain_f64 = array_compress(
+            data_f64, level=5
+        )
         check_f64 = array_decompress(
             comp_f64,
             data_shape[-1],
@@ -131,8 +126,9 @@ class ArrayTest(unittest.TestCase):
             nbytes_f64,
             stream_offsets=off_f64,
             stream_gains=gain_f64,
+            is_int64=True,
         )
-        self.assertTrue(np.allclose(check_f64, data_f64, rtol=1e-5, atol=1e-5))
+        self.assertTrue(np.allclose(check_f64, data_f64, rtol=1e-15, atol=1e-15))
 
         check_slc_f64 = array_decompress(
             comp_f64,
@@ -143,9 +139,12 @@ class ArrayTest(unittest.TestCase):
             stream_gains=gain_f64,
             first_stream_sample=first,
             last_stream_sample=last,
+            is_int64=True,
         )
         self.assertTrue(
-            np.allclose(check_slc_f64, data_f64[:, :, first:last], rtol=1e-5, atol=1e-5)
+            np.allclose(
+                check_slc_f64, data_f64[:, :, first:last], rtol=1e-15, atol=1e-15
+            )
         )
 
     def test_array_memory(self):
@@ -157,9 +156,11 @@ class ArrayTest(unittest.TestCase):
 
         farray = FlacArray.from_array(data_f64)
         check_f64 = farray.to_array()
-        self.assertTrue(np.allclose(check_f64, data_f64, rtol=1e-5, atol=1e-5))
+        self.assertTrue(np.allclose(check_f64, data_f64, rtol=1e-15, atol=1e-15))
 
         check_slc_f64 = farray.to_array(stream_slice=slice(first, last, 1))
         self.assertTrue(
-            np.allclose(check_slc_f64, data_f64[:, :, first:last], rtol=1e-5, atol=1e-5)
+            np.allclose(
+                check_slc_f64, data_f64[:, :, first:last], rtol=1e-15, atol=1e-15
+            )
         )

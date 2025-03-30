@@ -11,12 +11,10 @@ from functools import wraps
 import numpy as np
 
 from .libflacarray import (
-    wrap_int64_to_int32,
     wrap_float32_to_int32,
-    wrap_float64_to_int32,
-    wrap_int32_to_int64,
+    wrap_float64_to_int64,
     wrap_int32_to_float32,
-    wrap_int32_to_float64,
+    wrap_int64_to_float64,
 )
 
 
@@ -178,52 +176,12 @@ def function_timer_stackskip(f):
 
 
 @function_timer
-def int64_to_int32(data):
-    """Convert an array of 64bit integer streams to 32bit.
-
-    For each stream, this finds the 64bit integer mean and subtracts it.  It then
-    checks that the stream values will fit in a 32bit integer representation.  If you
-    want to treat the integer values as floating point data, use float_to_int32
-    instead.
-
-    The offset array returned will have the same shape as the leading dimensions of
-    the input array.
-
-    Args:
-        data (array):  The 64bit integer array.
-
-    Returns:
-        (tuple):  The (integer data, offset array)
-
-    """
-    if data.dtype != np.dtype(np.int64):
-        raise ValueError("Only int64 data is supported by this function")
-
-    leading_shape = data.shape[:-1]
-    if len(leading_shape) == 0:
-        n_stream = 1
-    else:
-        n_stream = np.prod(leading_shape)
-    stream_size = data.shape[-1]
-
-    output, offsets = wrap_int64_to_int32(
-        data.reshape((-1,)),
-        n_stream,
-        stream_size,
-    )
-
-    return (
-        output.reshape(data.shape),
-        offsets.reshape(leading_shape),
-    )
-
-
-@function_timer
-def float_to_int32(data, quanta=None, precision=None):
+def float_to_int(data, quanta=None, precision=None):
     """Convert floating point data to integers.
 
     This function subtracts the mean and rescales data before rounding to 32bit
-    integer values.
+    or 64bit integer values.  32bit floats are converted to 32bit integers and
+    64bit floats are converted to 64bit integers.
 
     Args:
         data (array):  The floating point data.
@@ -281,7 +239,7 @@ def float_to_int32(data, quanta=None, precision=None):
             quanta.reshape((-1,)).astype(data.dtype),
         )
     else:
-        output, offsets, gains = wrap_float64_to_int32(
+        output, offsets, gains = wrap_float64_to_int64(
             data.reshape((-1,)),
             n_stream,
             stream_size,
@@ -296,13 +254,15 @@ def float_to_int32(data, quanta=None, precision=None):
 
 
 @function_timer
-def int32_to_float(idata, offset, gain):
+def int_to_float(idata, offset, gain):
     """Restore floating point data from integers.
 
     The gain and offset are applied and the resulting data is returned.
+    32bit integer data is converted to 32bit floats and 64bit integer data
+    is converted to 64bit floats.
 
     Args:
-        idata (array):  The 32bit integer data.
+        idata (array):  The 32bit or 64bit integer data.
         offset (array):  The offset used in the original conversion.
         gain (array):  The gain used in the original conversion.
 
@@ -310,8 +270,8 @@ def int32_to_float(idata, offset, gain):
         (array):  The restored float data.
 
     """
-    if idata.dtype != np.dtype(np.int32):
-        raise ValueError("Input data should be int32")
+    if idata.dtype != np.dtype(np.int32) and idata.dtype != np.dtype(np.int64):
+        raise ValueError("Input data should be int32 or int64")
 
     leading_shape = idata.shape[:-1]
     if len(leading_shape) == 0:
@@ -328,7 +288,7 @@ def int32_to_float(idata, offset, gain):
         msg = f"Gain array has shape {gain.shape}, expected shape {leading_shape}"
         raise ValueError(msg)
 
-    if gain.dtype == np.dtype(np.float32):
+    if idata.dtype == np.dtype(np.int32):
         result = wrap_int32_to_float32(
             idata.reshape((-1,)),
             n_stream,
@@ -337,7 +297,7 @@ def int32_to_float(idata, offset, gain):
             gain.reshape((-1,)),
         )
     else:
-        result = wrap_int32_to_float64(
+        result = wrap_int64_to_float64(
             idata.reshape((-1,)),
             n_stream,
             stream_size,

@@ -5,7 +5,7 @@
 import numpy as np
 
 from .libflacarray import decode_flac
-from .utils import int32_to_float, keep_select, function_timer, select_keep_indices
+from .utils import int_to_float, keep_select, function_timer, select_keep_indices
 
 
 @function_timer
@@ -19,6 +19,7 @@ def array_decompress_slice(
     keep=None,
     first_stream_sample=None,
     last_stream_sample=None,
+    is_int64=False,
     use_threads=False,
 ):
     """Decompress a slice of a FLAC encoded array and restore original data type.
@@ -52,6 +53,7 @@ def array_decompress_slice(
         keep (array):  Bool array of streams to keep in the decompression.
         first_stream_sample (int):  The first sample of every stream to decompress.
         last_stream_sample (int):  The last sample of every stream to decompress.
+        is_int64 (bool):  If True, the compressed stream contains 64bit integers.
         use_threads (bool):  If True, use OpenMP threads to parallelize decoding.
             This is only beneficial for large arrays.
 
@@ -79,27 +81,19 @@ def array_decompress_slice(
                 first_sample=first_stream_sample,
                 last_sample=last_stream_sample,
                 use_threads=use_threads,
+                is_int64=is_int64,
             )
-            arr = int32_to_float(idata, offsets, gains)
+            arr = int_to_float(idata, offsets, gains)
         else:
-            # This is int64 data
-            idata = decode_flac(
-                compressed,
-                starts,
-                nbytes,
-                stream_size,
-                first_sample=first_stream_sample,
-                last_sample=last_stream_sample,
-                use_threads=use_threads,
+            raise RuntimeError(
+                "When specifying offsets, you must also provide the gains"
             )
-            ext_shape = offsets.shape + (1,)
-            arr = idata.astype(np.int64) + offsets.reshape(ext_shape)
     else:
         if stream_gains is not None:
             raise RuntimeError(
                 "When specifying gains, you must also provide the offsets"
             )
-        # This is int32 data
+        # This is integer data
         arr = decode_flac(
             compressed,
             starts,
@@ -108,6 +102,7 @@ def array_decompress_slice(
             first_sample=first_stream_sample,
             last_sample=last_stream_sample,
             use_threads=use_threads,
+            is_int64=is_int64,
         )
     return (arr, indices)
 
@@ -122,6 +117,7 @@ def array_decompress(
     stream_gains=None,
     first_stream_sample=None,
     last_stream_sample=None,
+    is_int64=False,
     use_threads=False,
 ):
     """Decompress a FLAC encoded array and restore original data type.
@@ -144,6 +140,7 @@ def array_decompress(
         stream_gains (array):  The array of gains, one per stream.
         first_stream_sample (int):  The first sample of every stream to decompress.
         last_stream_sample (int):  The last sample of every stream to decompress.
+        is_int64 (bool):  If True, the compressed stream contains 64bit integers.
         use_threads (bool):  If True, use OpenMP threads to parallelize decoding.
             This is only beneficial for large arrays.
 
@@ -161,6 +158,7 @@ def array_decompress(
         keep=None,
         first_stream_sample=first_stream_sample,
         last_stream_sample=last_stream_sample,
+        is_int64=is_int64,
         use_threads=use_threads,
     )
     return arr
