@@ -5,24 +5,7 @@
 #include <stdbool.h>
 #include <string.h>
 
-#include <FLAC/stream_encoder.h>
-
-#include "flacarray.h"
-
-
-// Callback structure to store the output encoded bytes.
-typedef struct {
-    int64_t last_stream;
-    int64_t cur_stream;
-    int64_t * stream_offsets;
-    ArrayUint8 * compressed;
-} enc_callback_data;
-
-typedef struct {
-    int64_t n_stream;
-    int64_t cur_stream;
-    ArrayUint8 ** compressed;
-} enc_threaded_callback_data;
+#include <flacarray.h>
 
 
 // Callback function, called by the encoder for each chunk
@@ -47,10 +30,11 @@ FLAC__StreamEncoderWriteStatus enc_write_callback(
         // We are starting a new stream.  Record the current starting offset.
         if (last < 0) {
             // This is the first stream
-            stream_offsets[0] = 0;
+            stream_offsets[cur] = 0;
         } else {
             stream_offsets[cur] = comp->n_elem;
         }
+        // fprintf(stderr, "enc_write:  new stream %ld at byte %ld\n", cur, stream_offsets[cur]);
         data->last_stream = cur;
     }
 
@@ -70,6 +54,7 @@ FLAC__StreamEncoderWriteStatus enc_write_callback(
     }
 
     // Copy bytes into place
+    // fprintf(stderr, "enc_write:  copy %ld bytes at start %ld\n", bytes, elems);
     memcpy(
         (void*)(comp->data + elems),
         (void*)buffer,
@@ -111,6 +96,7 @@ FLAC__StreamEncoderWriteStatus enc_threaded_write_callback(
     }
 
     // Copy bytes into place
+    // fprintf(stderr, "enc_write_threaded:  stream %ld copy %ld bytes at offset %ld\n", cur, bytes, elems);
     memcpy(
         (void*)(comp->data + elems),
         (void*)buffer,
@@ -122,7 +108,7 @@ FLAC__StreamEncoderWriteStatus enc_threaded_write_callback(
 
 
 // Helper function to free an array of buffers
-void _free_compressed(ArrayUint8 ** buffers, int64_t n_stream) {
+void free_compressed_buffers(ArrayUint8 ** buffers, int64_t n_stream) {
     if (buffers != NULL) {
         for (int64_t istream = 0; istream < n_stream; ++istream) {
             if (buffers[istream] != NULL) {
@@ -410,7 +396,7 @@ int encode_threaded(
 
     if (errors != ERROR_NONE) {
         // Clean up and exit
-        _free_compressed(buffers, n_stream);
+        free_compressed_buffers(buffers, n_stream);
         return errors;
     }
 
@@ -420,7 +406,7 @@ int encode_threaded(
         if (buffers[istream] == NULL) {
             // One of the streams was never processed.  This is an error.
             errors |= ERROR_ENCODE_COLLECT;
-            _free_compressed(buffers, n_stream);
+            free_compressed_buffers(buffers, n_stream);
             return errors;
         }
         starts[istream] = (*n_bytes);
@@ -431,13 +417,14 @@ int encode_threaded(
     (*bytes) = (unsigned char *)malloc((*n_bytes));
     if ((*bytes) == NULL) {
         // Allocation failed.
-        _free_compressed(buffers, n_stream);
+        free_compressed_buffers(buffers, n_stream);
         errors |= ERROR_ALLOC;
         return errors;
     }
 
     // Copy the per-stream buffers into the output.
     for (int64_t istream = 0; istream < n_stream; ++istream) {
+        // fprintf(stderr, "encode_threaded:  copy stream %ld (size=%ld) at offset %ld\n", istream, buffers[istream]->n_elem, starts[istream]);
         memcpy(
             (void*)((*bytes) + starts[istream]),
             (void*)(buffers[istream]->data),
@@ -446,7 +433,7 @@ int encode_threaded(
     }
 
     // Cleanup
-    _free_compressed(buffers, n_stream);
+    free_compressed_buffers(buffers, n_stream);
 
     return errors;
 }

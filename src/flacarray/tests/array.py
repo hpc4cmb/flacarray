@@ -84,7 +84,8 @@ class ArrayTest(unittest.TestCase):
 
         # float32 data
 
-        data_f32 = create_fake_data(data_shape, 1.0).astype(np.float32)
+        data_f32, _ = create_fake_data(data_shape, 1.0)
+        data_f32 = data_f32.astype(np.float32)
         comp_f32, starts_f32, nbytes_f32, off_f32, gain_f32 = array_compress(
             data_f32, level=5
         )
@@ -114,7 +115,7 @@ class ArrayTest(unittest.TestCase):
 
         # float64 data
 
-        data_f64 = create_fake_data(data_shape, 1.0)
+        data_f64, _ = create_fake_data(data_shape, 1.0)
 
         comp_f64, starts_f64, nbytes_f64, off_f64, gain_f64 = array_compress(
             data_f64, level=5
@@ -149,7 +150,7 @@ class ArrayTest(unittest.TestCase):
 
     def test_array_memory(self):
         data_shape = (4, 3, 10000)
-        data_f64 = create_fake_data(data_shape, 1.0)
+        data_f64, _ = create_fake_data(data_shape, 1.0)
         n_half = 5
         first = data_shape[-1] // 2 - n_half
         last = data_shape[-1] // 2 + n_half

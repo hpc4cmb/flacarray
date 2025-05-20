@@ -8,6 +8,19 @@
 #include "flacarray.h"
 
 
+// Local function for debugging and testing
+int verify(
+    unsigned char * const bytes,
+    int64_t * const starts,
+    int64_t * const nbytes,
+    int64_t n_stream,
+    int64_t stream_size,
+    uint32_t n_channels,
+    int64_t first_sample,
+    int64_t last_sample
+);
+
+
 void test_32bit() {
     fprintf(stderr, "============= 32bit Tests ===============\n");
 
@@ -108,6 +121,18 @@ void test_32bit() {
     int64_t first_sample = -1;
     int64_t last_sample = -1;
 
+    status = verify(
+        compressed,
+        stream_starts,
+        stream_nbytes,
+        n_streams,
+        stream_len,
+        1,
+        first_sample,
+        last_sample
+    );
+    fprintf(stderr, "Verified %ld streams of %ld integers, status = %d\n", n_streams, stream_len, status);
+
     start = clock();
     status = decode_i32(
         compressed,
@@ -163,8 +188,8 @@ void test_32bit() {
     first_sample = (int64_t)(stream_len / 2) - 5;
     last_sample = (int64_t)(stream_len / 2) + 5;
 
-    first_sample = 1;
-    last_sample = 6;
+    // first_sample = 1;
+    // last_sample = 6;
 
     int64_t n_decode = last_sample - first_sample;
 
@@ -173,6 +198,18 @@ void test_32bit() {
     if (decompressed == NULL) {
         fprintf(stderr, "Failed to allocate decompressed data\n");
     }
+
+    status = verify(
+        compressed,
+        stream_starts,
+        stream_nbytes,
+        n_streams,
+        stream_len,
+        1,
+        first_sample,
+        last_sample
+    );
+    fprintf(stderr, "Verified %ld streams with slice of %ld integers, status = %d\n", n_streams, n_decode, status);
 
     start = clock();
     status = decode_i32(
@@ -339,6 +376,18 @@ void test_64bit() {
     int64_t first_sample = -1;
     int64_t last_sample = -1;
 
+    status = verify(
+        compressed,
+        stream_starts,
+        stream_nbytes,
+        n_streams,
+        stream_len,
+        2,
+        first_sample,
+        last_sample
+    );
+    fprintf(stderr, "Verified %ld streams of %ld 64bit integers, status = %d\n", n_streams, stream_len, status);
+
     start = clock();
     status = decode_i64(
         compressed,
@@ -400,8 +449,8 @@ void test_64bit() {
     first_sample = (int64_t)(stream_len / 2) - 5;
     last_sample = (int64_t)(stream_len / 2) + 5;
 
-    first_sample = 1;
-    last_sample = 6;
+    // first_sample = 1;
+    // last_sample = 6;
 
     int64_t n_decode = last_sample - first_sample;
 
@@ -410,6 +459,18 @@ void test_64bit() {
     if (decompressed == NULL) {
         fprintf(stderr, "Failed to allocate decompressed data\n");
     }
+
+    status = verify(
+        compressed,
+        stream_starts,
+        stream_nbytes,
+        n_streams,
+        stream_len,
+        2,
+        first_sample,
+        last_sample
+    );
+    fprintf(stderr, "Verified %ld streams with slice of %ld 64bit integers, status = %d\n", n_streams, n_decode, status);
 
     start = clock();
     status = decode_i64(

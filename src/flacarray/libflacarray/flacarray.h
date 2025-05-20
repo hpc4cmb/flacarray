@@ -11,6 +11,9 @@
 # include <omp.h>
 #endif // ifdef _OPENMP
 
+#include <FLAC/stream_encoder.h>
+#include <FLAC/stream_decoder.h>
+
 
 // Error codes
 
@@ -49,6 +52,40 @@ int resize_array_uint8(ArrayUint8 * obj, int64_t new_size);
 
 // Encoding
 
+// Callback structure to store the output encoded bytes.
+typedef struct {
+    int64_t last_stream;
+    int64_t cur_stream;
+    int64_t * stream_offsets;
+    ArrayUint8 * compressed;
+} enc_callback_data;
+
+typedef struct {
+    int64_t n_stream;
+    int64_t cur_stream;
+    ArrayUint8 ** compressed;
+} enc_threaded_callback_data;
+
+FLAC__StreamEncoderWriteStatus enc_write_callback(
+    const FLAC__StreamEncoder * encoder,
+    const FLAC__byte buffer[],
+    size_t bytes,
+    uint32_t samples,
+    uint32_t current_frame,
+    void * client_data
+);
+
+FLAC__StreamEncoderWriteStatus enc_threaded_write_callback(
+    const FLAC__StreamEncoder * encoder,
+    const FLAC__byte buffer[],
+    size_t bytes,
+    uint32_t samples,
+    uint32_t current_frame,
+    void * client_data
+);
+
+void free_compressed_buffers(ArrayUint8 ** buffers, int64_t n_stream);
+
 int encode(
     int32_t * const data,
     int64_t n_stream,
@@ -72,6 +109,75 @@ int encode_threaded(
 );
 
 // Decoding
+
+// This structure is used as the client data for BOTH the read and write
+// callback functions.
+
+typedef struct {
+    unsigned char const * input;
+    // Total number of streams
+    int64_t n_stream;
+    // The number of samples to decode from all streams
+    int64_t n_decode;
+    // The number of channels in a single sample of a single stream
+    uint32_t n_channels;
+    // The current stream that is being decoded
+    int64_t cur_stream;
+    // The starting byte of the current stream in the compressed input
+    int64_t stream_start;
+    // The ending byte of the current stream in the compressed input
+    int64_t stream_end;
+    // The current byte position in the compressed input
+    int64_t stream_pos;
+    // The number of decompressed samples processed so far in this stream
+    int64_t decomp_nelem;
+    // The decompressed and interleaved output for the current stream.  This
+    // points to the beginning of the output stream in the larger output
+    // buffer, and each stream has n_decode * n_channels int32 values.
+    int32_t * decompressed;
+    // The current error state
+    int32_t err;
+} dec_callback_data;
+
+FLAC__StreamDecoderReadStatus dec_read_callback(
+    const FLAC__StreamDecoder * decoder,
+    FLAC__byte buffer[],
+    size_t * bytes,
+    void * client_data
+);
+
+FLAC__StreamDecoderWriteStatus dec_write_callback(
+    const FLAC__StreamDecoder * decoder,
+    const FLAC__Frame * frame,
+    const FLAC__int32 * const buffer[],
+    void * client_data
+);
+
+void dec_err_callback(
+    const FLAC__StreamDecoder * decoder,
+    FLAC__StreamDecoderErrorStatus status,
+    void * client_data
+);
+
+FLAC__StreamDecoderSeekStatus dec_seek_callback(
+    const FLAC__StreamDecoder * decoder,
+    FLAC__uint64 absolute_byte_offset,
+    void * client_data
+);
+
+FLAC__StreamDecoderTellStatus dec_tell_callback(
+    const FLAC__StreamDecoder * decoder,
+    FLAC__uint64 * absolute_byte_offset,
+    void * client_data
+);
+
+FLAC__StreamDecoderLengthStatus dec_length_callback(
+    const FLAC__StreamDecoder * decoder,
+    FLAC__uint64 * stream_length,
+    void * client_data
+);
+
+FLAC__bool dec_eof_callback(const FLAC__StreamDecoder * decoder, void * client_data);
 
 int decode(
     unsigned char * const bytes,

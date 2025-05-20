@@ -123,6 +123,7 @@ def read_compressed(zgrp, keep=None, mpi_comm=None, mpi_dist=None):
     global_nbytes = None
     stream_off_dtype = None
     stream_gain_dtype = None
+    n_channel = None
 
     # Dataset handles (only valding on reading processes)
     dstarts = None

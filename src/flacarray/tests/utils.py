@@ -21,7 +21,7 @@ class UtilsTest(unittest.TestCase):
 
     def test_float64(self):
         data_shape = (4, 3, 1000)
-        data = create_fake_data(data_shape, 1.0)
+        data, _ = create_fake_data(data_shape, 1.0)
 
         idata, offsets, gains = float_to_int(data, quanta=None, precision=None)
         check = int_to_float(idata, offsets, gains)
@@ -64,7 +64,8 @@ class UtilsTest(unittest.TestCase):
 
     def test_float32(self):
         data_shape = (4, 3, 1000)
-        data = create_fake_data(data_shape, 1.0).astype(np.float32)
+        data, _ = create_fake_data(data_shape, 1.0)
+        data = data.astype(np.float32)
         idata, offsets, gains = float_to_int(data, quanta=None, precision=None)
         check = int_to_float(idata, offsets, gains)
         if not np.allclose(check, data, rtol=1e-5, atol=1e-5):

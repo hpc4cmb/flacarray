@@ -2,39 +2,7 @@
 // All rights reserved.  Use of this source code is governed by
 // a BSD-style license that can be found in the LICENSE file.
 
-#include <FLAC/stream_decoder.h>
-
-#include "flacarray.h"
-
-
-// This structure is used as the client data for BOTH the read and write
-// callback functions below.
-
-typedef struct {
-    unsigned char const * input;
-    // Total number of streams
-    int64_t n_stream;
-    // The number of samples to decode from all streams
-    int64_t n_decode;
-    // The number of channels in a single sample of a single stream
-    uint32_t n_channels;
-    // The current stream that is being decoded
-    int64_t cur_stream;
-    // The starting byte of the current stream in the compressed input
-    int64_t stream_start;
-    // The ending byte of the current stream in the compressed input
-    int64_t stream_end;
-    // The current byte position in the compressed input
-    int64_t stream_pos;
-    // The number of decompressed samples processed so far in this stream
-    int64_t decomp_nelem;
-    // The decompressed and interleaved output for the current stream.  This
-    // points to the beginning of the output stream in the larger output
-    // buffer, and each stream has n_decode * n_channels int32 values.
-    int32_t * decompressed;
-    // The current error state
-    int32_t err;
-} dec_callback_data;
+#include <flacarray.h>
 
 
 // Read callback function, called by the decoder for each chunk to request
@@ -57,11 +25,13 @@ FLAC__StreamDecoderReadStatus dec_read_callback(
     if (remaining == 0) {
         // No data left
         (*bytes) = 0;
+        // fprintf(stderr, "dec_read: remaining == 0, end of stream\n");
         return FLAC__STREAM_DECODER_READ_STATUS_END_OF_STREAM;
     } else {
         // We have some data left
         if (n_buffer == 0) {
             // ... but there is no place to put it!
+            // fprintf(stderr, "dec_read: remaining == %ld, but n_buffer = %ld\n", remaining, n_buffer);
             callback_data->err = ERROR_DECODE_READ_ZEROBUF;
             return FLAC__STREAM_DECODER_READ_STATUS_ABORT;
         } else {
@@ -71,6 +41,7 @@ FLAC__StreamDecoderReadStatus dec_read_callback(
                     (void*)(input + pos),
                     n_buffer
                 );
+                // fprintf(stderr, "dec_read: copy %ld bytes, continue\n", n_buffer);
                 callback_data->stream_pos += n_buffer;
                 return FLAC__STREAM_DECODER_READ_STATUS_CONTINUE;
             } else {
@@ -79,6 +50,7 @@ FLAC__StreamDecoderReadStatus dec_read_callback(
                     (void*)(input + pos),
                     remaining
                 );
+                // fprintf(stderr, "dec_read: copy %ld remaining bytes\n", remaining);
                 callback_data->stream_pos += remaining;
                 (*bytes) = remaining;
                 return FLAC__STREAM_DECODER_READ_STATUS_CONTINUE;
@@ -119,6 +91,7 @@ FLAC__StreamDecoderWriteStatus dec_write_callback(
 
     // Copy data from all channels into our interleaved output buffer.
     int64_t offset;
+    // fprintf(stderr, "dec_write: copy %ld samples with %ld channels\n", n_copy, n_chan);
     for (uint32_t chan = 0; chan < n_chan; ++chan) {
         for (int32_t isamp = 0; isamp < n_copy; ++isamp) {
             offset = n_chan * (nelem + isamp);
@@ -166,13 +139,16 @@ FLAC__StreamDecoderSeekStatus dec_seek_callback(
     int64_t stream_end = callback_data->stream_end;
     // Convert the requested stream offset into absolute position.
     int64_t abs_request = absolute_byte_offset + stream_start;
+    // fprintf(stderr, "dec_seek: seek to stream byte %ld\n", absolute_byte_offset);
 
     if (abs_request > stream_end) {
         // Position beyond the end of the stream
+        // fprintf(stderr, "dec_seek: request %ld beyond stream end %ld, error\n", abs_request, stream_end);
         return FLAC__STREAM_DECODER_SEEK_STATUS_ERROR;
     }
     // Update byte position
     callback_data->stream_pos = abs_request;
+    // fprintf(stderr, "dec_seek: update absolute stream_pos to %ld\n", abs_request);
     return FLAC__STREAM_DECODER_SEEK_STATUS_OK;
 }
 
@@ -185,6 +161,7 @@ FLAC__StreamDecoderTellStatus dec_tell_callback(
     dec_callback_data * callback_data = (dec_callback_data *)client_data;
     // Compute the relative position in the current stream
     int64_t rel_pos = callback_data->stream_pos - callback_data->stream_start;
+    // fprintf(stderr, "dec_tell: stream offset %ld (absolute %ld - %ld)\n", rel_pos, callback_data->stream_pos, callback_data->stream_start);
     (*absolute_byte_offset) = rel_pos;
     return FLAC__STREAM_DECODER_TELL_STATUS_OK;
 }
@@ -197,6 +174,7 @@ FLAC__StreamDecoderLengthStatus dec_length_callback(
 ) {
     dec_callback_data * callback_data = (dec_callback_data *)client_data;
     (*stream_length) = callback_data->stream_end - callback_data->stream_start;
+    // fprintf(stderr, "dec_length: (absolute %ld - %ld) = %ld\n", callback_data->stream_end, callback_data->stream_start, (*stream_length));
     return FLAC__STREAM_DECODER_LENGTH_STATUS_OK;
 }
 
@@ -204,8 +182,10 @@ FLAC__StreamDecoderLengthStatus dec_length_callback(
 FLAC__bool dec_eof_callback(const FLAC__StreamDecoder * decoder, void * client_data) {
     dec_callback_data * callback_data = (dec_callback_data *)client_data;
     if (callback_data->stream_pos >= callback_data->stream_end) {
+        // fprintf(stderr, "dec_eof: stream pos %ld >= %ld, EOF\n", callback_data->stream_pos, callback_data->stream_end);
         return true;
     } else {
+        // fprintf(stderr, "dec_eof: stream pos %ld < %ld, NOT EOF\n", callback_data->stream_pos, callback_data->stream_end);
         return false;
     }
 }

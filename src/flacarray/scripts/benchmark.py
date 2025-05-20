@@ -14,14 +14,19 @@ from ..demo import create_fake_data
 from ..hdf5 import write_array as hdf5_write_array
 from ..hdf5 import read_array as hdf5_read_array
 from ..hdf5_utils import H5File
-from ..mpi import use_mpi, MPI
+from ..mpi import use_mpi, MPI, distribute_and_verify
 from ..utils import print_timers
 from ..zarr import write_array as zarr_write_array
 from ..zarr import read_array as zarr_read_array
 
 
 def benchmark(
-    shape, dir=".", keep=None, stream_slice=None, mpi_comm=None, use_threads=False
+    global_shape,
+    dir=".",
+    keep=None,
+    stream_slice=None,
+    mpi_comm=None,
+    use_threads=False,
 ):
     """Run benchmarks.
 
@@ -38,9 +43,18 @@ def benchmark(
     if mpi_comm is not None:
         mpi_comm.barrier()
 
-    arr = create_fake_data(shape)
-    shpstr = "-".join([f"{x}" for x in shape])
-    print(f"  Running tests with shape {shape} ({arr.nbytes} bytes)", flush=True)
+    # Get the local shape
+    dist = distribute_and_verify(mpi_comm, global_shape[0])
+    local_shape = [slice(dist[rank][0], dist[rank][1], 1)]
+    local_shape.extend(slice(None) for x in global_shape[1:])
+    local_shape = tuple(local_shape)
+
+    arr, mpi_dist = create_fake_data(local_shape, comm=mpi_comm)
+    shpstr = "-".join([f"{x}" for x in global_shape])
+    print(
+        f"  Running tests with global shape {global_shape} ({arr.global_nbytes} bytes)",
+        flush=True,
+    )
 
     # Run HDF5 tests
 
@@ -50,7 +64,7 @@ def benchmark(
     if mpi_comm is not None:
         mpi_comm.barrier()
     if rank == 0:
-        print(f"  FlacArray compress in {stop-start:0.3f} seconds", flush=True)
+        print(f"  FlacArray compress in {stop - start:0.3f} seconds", flush=True)
 
     out_file = os.path.join(dir, f"io_bench_{shpstr}.h5")
     with H5File(out_file, "w", comm=mpi_comm) as hf:
@@ -58,7 +72,7 @@ def benchmark(
         flcarr.write_hdf5(hf.handle)
         stop = time.perf_counter()
         if rank == 0:
-            print(f"  FlacArray write HDF5 in {stop-start:0.3f} seconds", flush=True)
+            print(f"  FlacArray write HDF5 in {stop - start:0.3f} seconds", flush=True)
 
     check = None
     with H5File(out_file, "r", comm=mpi_comm) as hf:
@@ -66,7 +80,7 @@ def benchmark(
         check = FlacArray.read_hdf5(hf.handle, keep=keep, mpi_comm=mpi_comm)
         stop = time.perf_counter()
         if rank == 0:
-            print(f"  FlacArray read HDF5 in {stop-start:0.3f} seconds", flush=True)
+            print(f"  FlacArray read HDF5 in {stop - start:0.3f} seconds", flush=True)
 
     del flcarr
     del check
@@ -81,7 +95,7 @@ def benchmark(
         flcarr.write_zarr(zf)
         stop = time.perf_counter()
         if rank == 0:
-            print(f"  FlacArray write Zarr in {stop-start:0.3f} seconds", flush=True)
+            print(f"  FlacArray write Zarr in {stop - start:0.3f} seconds", flush=True)
 
     check = None
     with zarr.open_group(out_file, mode="r") as zf:
@@ -89,7 +103,7 @@ def benchmark(
         check = FlacArray.read_zarr(zf, keep=keep, mpi_comm=mpi_comm)
         stop = time.perf_counter()
         if rank == 0:
-            print(f"  FlacArray read Zarr in {stop-start:0.3f} seconds", flush=True)
+            print(f"  FlacArray read Zarr in {stop - start:0.3f} seconds", flush=True)
 
     del flcarr
     del check
@@ -107,7 +121,7 @@ def benchmark(
         stop = time.perf_counter()
         if rank == 0:
             print(
-                f"  Direct compress and write HDF5 in {stop-start:0.3f} seconds",
+                f"  Direct compress and write HDF5 in {stop - start:0.3f} seconds",
                 flush=True,
             )
 
@@ -124,7 +138,7 @@ def benchmark(
         stop = time.perf_counter()
         if rank == 0:
             print(
-                f"  Direct read HDF5 and decompress in {stop-start:0.3f} seconds",
+                f"  Direct read HDF5 and decompress in {stop - start:0.3f} seconds",
                 flush=True,
             )
 
@@ -137,7 +151,7 @@ def benchmark(
         stop = time.perf_counter()
         if rank == 0:
             print(
-                f"  Direct compress and write Zarr in {stop-start:0.3f} seconds",
+                f"  Direct compress and write Zarr in {stop - start:0.3f} seconds",
                 flush=True,
             )
 
@@ -154,7 +168,7 @@ def benchmark(
         stop = time.perf_counter()
         if rank == 0:
             print(
-                f"  Direct read Zarr and decompress in {stop-start:0.3f} seconds",
+                f"  Direct read Zarr and decompress in {stop - start:0.3f} seconds",
                 flush=True,
             )
 
@@ -174,10 +188,10 @@ def cli():
         help="Output directory",
     )
     parser.add_argument(
-        "--data_shape",
+        "--global_shape",
         required=False,
         default="(4,3,100000)",
-        help="Data shape (as a string)",
+        help="Global data shape (as a string)",
     )
     parser.add_argument(
         "--use_threads",
@@ -188,7 +202,7 @@ def cli():
     )
     args = parser.parse_args()
 
-    shape = eval(args.data_shape)
+    shape = eval(args.global_shape)
 
     if use_mpi:
         comm = MPI.COMM_WORLD
