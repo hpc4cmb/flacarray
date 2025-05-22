@@ -85,7 +85,6 @@ jobs:
             && conda create --yes -n test python==${{ matrix.python }} \
             && conda activate test \
             && conda install --yes --file packaging/conda_build_requirements.txt
-        run: |
           if test ${{ matrix.python }} = "3.9"; then conda install libxcrypt; fi
 
       - name: Install
