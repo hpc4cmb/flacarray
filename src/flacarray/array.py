@@ -513,6 +513,8 @@ class FlacArray:
             n_channels = 2
         else:
             n_channels = 1
+
+        print(f"write_hdf:  hgrp = {hgrp}", flush=True)
         hdf5_write_compressed(
             hgrp,
             self._leading_shape,

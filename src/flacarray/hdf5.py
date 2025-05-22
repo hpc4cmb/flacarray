@@ -162,6 +162,7 @@ def write_compressed(
     comm = mpi_comm
 
     use_serial = hdf5_use_serial(hgrp, comm)
+    print(f"use_serial({hgrp}, {comm}) -> {use_serial}", flush=True)
 
     if comm is None:
         nproc = 1
@@ -177,6 +178,7 @@ def write_compressed(
     dsgain = None
 
     if rank == 0 or not use_serial:
+        print(f"if:  rank = {rank} ? 0 OR not use_serial = {not use_serial}", flush=True)
         # This process is participating.  Write the format version string
         # to the top-level group.
         hgrp.attrs["flacarray_format_version"] = "1"

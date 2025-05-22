@@ -18,6 +18,7 @@ from ..mpi import use_mpi, MPI, distribute_and_verify
 from ..utils import print_timers
 from ..zarr import write_array as zarr_write_array
 from ..zarr import read_array as zarr_read_array
+from ..zarr import ZarrGroup
 
 
 def benchmark(
@@ -45,14 +46,14 @@ def benchmark(
 
     # Get the local shape
     dist = distribute_and_verify(mpi_comm, global_shape[0])
-    local_shape = [slice(dist[rank][0], dist[rank][1], 1)]
-    local_shape.extend(slice(None) for x in global_shape[1:])
+    local_shape = [dist[rank][1] - dist[rank][0]]
+    local_shape.extend(global_shape[1:])
     local_shape = tuple(local_shape)
 
     arr, mpi_dist = create_fake_data(local_shape, comm=mpi_comm)
     shpstr = "-".join([f"{x}" for x in global_shape])
     print(
-        f"  Running tests with global shape {global_shape} ({arr.global_nbytes} bytes)",
+        f"  Running tests with global shape {global_shape}",
         flush=True,
     )
 
@@ -68,6 +69,7 @@ def benchmark(
 
     out_file = os.path.join(dir, f"io_bench_{shpstr}.h5")
     with H5File(out_file, "w", comm=mpi_comm) as hf:
+        print(f"rank {rank} has hf = {hf}, handle = {hf.handle}", flush=True)
         start = time.perf_counter()
         flcarr.write_hdf5(hf.handle)
         stop = time.perf_counter()
@@ -90,7 +92,7 @@ def benchmark(
     flcarr = FlacArray.from_array(arr, use_threads=use_threads)
 
     out_file = os.path.join(dir, f"io_bench_{shpstr}.zarr")
-    with zarr.open_group(out_file, mode="w") as zf:
+    with ZarrGroup(out_file, mode="w", comm=mpi_comm) as zf:
         start = time.perf_counter()
         flcarr.write_zarr(zf)
         stop = time.perf_counter()
@@ -98,7 +100,7 @@ def benchmark(
             print(f"  FlacArray write Zarr in {stop - start:0.3f} seconds", flush=True)
 
     check = None
-    with zarr.open_group(out_file, mode="r") as zf:
+    with ZarrGroup(out_file, mode="r", comm=mpi_comm) as zf:
         start = time.perf_counter()
         check = FlacArray.read_zarr(zf, keep=keep, mpi_comm=mpi_comm)
         stop = time.perf_counter()
@@ -145,7 +147,7 @@ def benchmark(
     # Zarr
 
     out_file = os.path.join(dir, f"io_bench_direct_{shpstr}.zarr")
-    with zarr.open_group(out_file, mode="w") as zf:
+    with ZarrGroup(out_file, mode="w", comm=mpi_comm) as zf:
         start = time.perf_counter()
         zarr_write_array(arr, zf, level=5, mpi_comm=mpi_comm, use_threads=use_threads)
         stop = time.perf_counter()
@@ -156,7 +158,7 @@ def benchmark(
             )
 
     check = None
-    with zarr.open_group(out_file, mode="r") as zf:
+    with ZarrGroup(out_file, mode="r", comm=mpi_comm) as zf:
         start = time.perf_counter()
         check = zarr_read_array(
             zf,
@@ -203,6 +205,7 @@ def cli():
     args = parser.parse_args()
 
     shape = eval(args.global_shape)
+    print(f"shape = {shape}", flush=True)
 
     if use_mpi:
         comm = MPI.COMM_WORLD
