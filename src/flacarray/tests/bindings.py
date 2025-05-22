@@ -8,9 +8,12 @@ import unittest
 import numpy as np
 
 from ..libflacarray import (
-    wrap_encode,
-    wrap_encode_threaded,
-    wrap_decode,
+    wrap_encode_i32,
+    wrap_encode_i32_threaded,
+    wrap_encode_i64,
+    wrap_encode_i64_threaded,
+    wrap_decode_i32,
+    wrap_decode_i64,
     encode_flac,
     decode_flac,
 )
@@ -20,7 +23,7 @@ class BindingsTest(unittest.TestCase):
     def setUp(self):
         fixture_name = os.path.splitext(os.path.basename(__file__))[0]
 
-    def test_wrappers(self):
+    def test_wrappers_i32(self):
         n_streams = 3
         stream_len = 10000
         level = 5
@@ -28,14 +31,21 @@ class BindingsTest(unittest.TestCase):
         flatsize = n_streams * stream_len
 
         rng = np.random.default_rng()
-        data = rng.integers(low=-2 * 28, high=2 * 28, size=flatsize, dtype=np.int32)
+        data = rng.integers(low=-(2**28), high=2**28, size=flatsize, dtype=np.int32)
 
-        compressed, stream_starts, stream_nbytes = wrap_encode_threaded(
+        compressed, stream_starts, stream_nbytes = wrap_encode_i32_threaded(
             data, n_streams, stream_len, level
         )
 
-        output = wrap_decode(
-            compressed, stream_starts, stream_nbytes, n_streams, stream_len, -1, -1, True
+        output = wrap_decode_i32(
+            compressed,
+            stream_starts,
+            stream_nbytes,
+            n_streams,
+            stream_len,
+            -1,
+            -1,
+            True,
         )
 
         for istream in range(n_streams):
@@ -55,8 +65,15 @@ class BindingsTest(unittest.TestCase):
         last = (stream_len // 2) + 5
         n_decode = last - first
 
-        output_slc = wrap_decode(
-            compressed, stream_starts, stream_nbytes, n_streams, stream_len, first, last, True
+        output_slc = wrap_decode_i32(
+            compressed,
+            stream_starts,
+            stream_nbytes,
+            n_streams,
+            stream_len,
+            first,
+            last,
+            True,
         )
         for istream in range(n_streams):
             for isamp in range(n_decode):
@@ -70,7 +87,71 @@ class BindingsTest(unittest.TestCase):
                     print(msg)
                     self.assertTrue(False)
 
-    def test_roundtrip(self):
+    def test_wrappers_i64(self):
+        n_streams = 3
+        stream_len = 10000
+        level = 5
+
+        flatsize = n_streams * stream_len
+
+        rng = np.random.default_rng()
+        data = rng.integers(low=-(2**60), high=2**60, size=flatsize, dtype=np.int64)
+
+        compressed, stream_starts, stream_nbytes = wrap_encode_i64_threaded(
+            data, n_streams, stream_len, level
+        )
+
+        output = wrap_decode_i64(
+            compressed,
+            stream_starts,
+            stream_nbytes,
+            n_streams,
+            stream_len,
+            -1,
+            -1,
+            True,
+        )
+
+        for istream in range(n_streams):
+            for isamp in range(stream_len):
+                if (
+                    output[istream * stream_len + isamp]
+                    != data[istream * stream_len + isamp]
+                ):
+                    msg = f"FAIL [{istream},{isamp}]: "
+                    msg += f"{output[istream * stream_len + isamp]} "
+                    msg += f"!= {data[istream * stream_len + isamp]}"
+                    print(msg)
+                    self.assertTrue(False)
+
+        # Now testing with sample slices
+        first = (stream_len // 2) - 5
+        last = (stream_len // 2) + 5
+        n_decode = last - first
+
+        output_slc = wrap_decode_i64(
+            compressed,
+            stream_starts,
+            stream_nbytes,
+            n_streams,
+            stream_len,
+            first,
+            last,
+            True,
+        )
+        for istream in range(n_streams):
+            for isamp in range(n_decode):
+                if (
+                    output_slc[istream * n_decode + isamp]
+                    != data[istream * stream_len + isamp + first]
+                ):
+                    msg = f"FAIL [{istream},{isamp}]: "
+                    msg += f"{output_slc[istream * n_decode + isamp]} "
+                    msg += f"!= {data[istream * stream_len + isamp + first]}"
+                    print(msg)
+                    self.assertTrue(False)
+
+    def test_roundtrip_i32(self):
         n_streams = 3
         stream_len = 10000
         level = 5
@@ -82,9 +163,46 @@ class BindingsTest(unittest.TestCase):
             low=-(2**28), high=2**28, size=flatsize, dtype=np.int32
         ).reshape((n_streams, stream_len))
 
-        (compressed, stream_starts, stream_nbytes) = encode_flac(data, level, use_threads=True)
+        (compressed, stream_starts, stream_nbytes) = encode_flac(
+            data, level, use_threads=True
+        )
 
-        output = decode_flac(compressed, stream_starts, stream_nbytes, stream_len, use_threads=True)
+        output = decode_flac(
+            compressed, stream_starts, stream_nbytes, stream_len, use_threads=True
+        )
+
+        for istream in range(n_streams):
+            for isamp in range(stream_len):
+                if output[istream, isamp] != data[istream, isamp]:
+                    msg = f"FAIL [{istream},{isamp}]: {output[istream, isamp]} "
+                    msg += f"!= {data[istream, isamp]}"
+                    print(msg)
+                    self.assertTrue(False)
+
+    def test_roundtrip_i64(self):
+        n_streams = 3
+        stream_len = 10000
+        level = 5
+
+        flatsize = n_streams * stream_len
+
+        rng = np.random.default_rng()
+        data = rng.integers(
+            low=-(2**60), high=2**60, size=flatsize, dtype=np.int64
+        ).reshape((n_streams, stream_len))
+
+        (compressed, stream_starts, stream_nbytes) = encode_flac(
+            data, level, use_threads=True
+        )
+
+        output = decode_flac(
+            compressed,
+            stream_starts,
+            stream_nbytes,
+            stream_len,
+            use_threads=True,
+            is_int64=True,
+        )
 
         for istream in range(n_streams):
             for isamp in range(stream_len):

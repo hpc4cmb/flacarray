@@ -92,12 +92,14 @@ def hdf5_open(path, mode, comm=None, force_serial=False):
 
     """
     parallel = have_hdf5_parallel()
+    print(f"native have parallel = {parallel}, force_serial = {force_serial}", flush=True)
     if force_serial:
         parallel = False
     rank = 0
     if comm is not None:
         rank = comm.rank
     participating = parallel or (rank == 0)
+    print(f"rank {rank} participating = {participating}", flush=True)
     hf = None
     if participating:
         if parallel:

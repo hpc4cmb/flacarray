@@ -42,9 +42,11 @@ def read_compressed_dataset_slice(dcomp, keep, stream_starts, stream_nbytes):
         data = np.empty(total_bytes, dtype=np.uint8)
         if hasattr(dcomp, "read_direct"):
             # HDF5
+            #print(f"io hdf5 read_slice: {hslc} -> {dslc}", flush=True)
             dcomp.read_direct(data, hslc, dslc)
         else:
             # Zarr
+            #print(f"io zarr read_slice: {hslc} -> {dslc}", flush=True)
             data[dslc] = dcomp[hslc]
         return (data, rel_starts, None)
     else:
@@ -62,12 +64,14 @@ def read_compressed_dataset_slice(dcomp, keep, stream_starts, stream_nbytes):
             for istr in range(len(starts)):
                 dslc = (slice(rel_starts[istr], rel_starts[istr] + nbytes[istr]),)
                 hslc = (slice(starts[istr], starts[istr] + nbytes[istr]),)
+                # print(f"io hdf5 read_slice: {hslc} -> {dslc}", flush=True)
                 dcomp.read_direct(data, hslc, dslc)
         else:
             # Zarr
             for istr in range(len(starts)):
                 dslc = (slice(rel_starts[istr], rel_starts[istr] + nbytes[istr]),)
                 hslc = (slice(starts[istr], starts[istr] + nbytes[istr]),)
+                # print(f"io zarr read_slice: {hslc} -> {dslc}", flush=True)
                 data[dslc] = dcomp[hslc]
         return (data, rel_starts, indices)
 
@@ -193,6 +197,7 @@ def read_send_compressed(reader, global_shape, keep=None, mpi_comm=None, mpi_dis
 
             if proc == 0:
                 # Store local data
+                # print("read_send proc 0 storing local data", flush=True)
                 if proc_shape is not None:
                     local_shape = proc_shape + (stream_size,)
                 local_starts = proc_starts
@@ -210,6 +215,7 @@ def read_send_compressed(reader, global_shape, keep=None, mpi_comm=None, mpi_dis
                     buffers.append(proc_gains)
 
                 # Send two pieces of information needed to receiver further data.
+                # print(f"read_send proc 0 sending to proc {proc}", flush=True)
                 requests[proc] = dict()
                 max_n_send = 7
                 tag_base = max_n_send * proc
@@ -228,6 +234,7 @@ def read_send_compressed(reader, global_shape, keep=None, mpi_comm=None, mpi_dis
         elif proc == rank:
             # First receive the shape and keep indices, which may change depending on
             # keep mask.
+            # print(f"read_send proc {proc} receiving from proc 0", flush=True)
             max_n_recv = 7
             tag_base = max_n_recv * proc
             proc_shape = mpi_comm.recv(source=0, tag=tag_base)
@@ -294,6 +301,7 @@ def receive_write_compressed(
         tag_stream_offsets = tag_nbuf * proc + 3
         tag_stream_gains = tag_nbuf * proc + 4
         if rank == 0:
+            # print(f"receive_write proc 0 receiving / processing proc {proc}", flush=True)
             # The rank zero process will receive data from the other processes
             # and write it into the global datasets.  For each dataset we build
             # the "slab" (tuple of slices) that we will write from the array
@@ -363,6 +371,7 @@ def receive_write_compressed(
             writer.save_compressed(recv, mpi_comm, dslc, fslc)
             del recv
         elif proc == rank:
+            # print(f"receive_write proc {proc} sending to proc 0", flush=True)
             # We are sending.
             mpi_comm.Send(writer.starts.astype(np.int64), dest=0, tag=tag_starts)
             mpi_comm.Send(writer.nbytes, dest=0, tag=tag_nbytes)

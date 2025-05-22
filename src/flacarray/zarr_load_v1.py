@@ -25,6 +25,7 @@ zarr_names = {
     "stream_size": "stream_size",
     "stream_offsets": "stream_offsets",
     "stream_gains": "stream_gains",
+    "flac_channels": "flac_channels",
 }
 
 
@@ -122,6 +123,7 @@ def read_compressed(zgrp, keep=None, mpi_comm=None, mpi_dist=None):
     global_nbytes = None
     stream_off_dtype = None
     stream_gain_dtype = None
+    n_channel = None
 
     # Dataset handles (only valding on reading processes)
     dstarts = None
@@ -134,11 +136,12 @@ def read_compressed(zgrp, keep=None, mpi_comm=None, mpi_dist=None):
         # This process is participating.
         # Double check that we can load this format.
         ver = int(zgrp.attrs["flacarray_format_version"])
-        if ver != 0:
-            msg = f"Version 0 loader called with version {ver} data"
+        if ver != 1:
+            msg = f"Version 1 loader called with version {ver} data"
             raise RuntimeError(msg)
 
         # Get a handle to all the datasets, and extract some metadata.
+        n_channel = int(zgrp.attrs[zarr_names["flac_channels"]])
         dstarts = zgrp[zarr_names["stream_starts"]]
         stream_size = int(dstarts.attrs[zarr_names["stream_size"]])
         global_shape = dstarts.shape + (stream_size,)
@@ -162,6 +165,7 @@ def read_compressed(zgrp, keep=None, mpi_comm=None, mpi_dist=None):
         global_nbytes = mpi_comm.bcast(global_nbytes, root=0)
         stream_gain_dtype = mpi_comm.bcast(stream_gain_dtype, root=0)
         stream_off_dtype = mpi_comm.bcast(stream_off_dtype, root=0)
+        n_channel = mpi_comm.bcast(n_channel, root=0)
 
     # Compute or verify the MPI distribution for the global leading dimension
     mpi_dist = distribute_and_verify(mpi_comm, global_shape[0], mpi_dist=mpi_dist)
@@ -186,14 +190,11 @@ def read_compressed(zgrp, keep=None, mpi_comm=None, mpi_dist=None):
         mpi_dist=mpi_dist,
     )
 
-    # For version 0, the number of channels is always "1", since int64 flac encoding
-    # was not yet supported.  We handle the int64 case in the read_array() function.
-
     return (
         local_shape,
         global_shape,
         compressed,
-        1,
+        n_channel,
         local_starts,
         stream_nbytes,
         stream_offsets,
@@ -277,58 +278,18 @@ def read_array(
         first_samp = stream_slice.start
         last_samp = stream_slice.stop
 
-    # Check for legacy int64 storage format.  Version 0 used 32bit integers plus
-    # an offset to encode a subset of 64bit integers.
-
-    if stream_offsets is not None:
-        if stream_gains is None:
-            # Legacy int64 format.  First decompress the 32bit integers
-            arr = array_decompress(
-                compressed,
-                local_shape[-1],
-                stream_starts,
-                stream_nbytes,
-                stream_offsets=None,
-                stream_gains=None,
-                first_stream_sample=first_samp,
-                last_stream_sample=last_samp,
-                use_threads=use_threads,
-            )
-            # Now add the stream offsets
-            ext_shape = stream_offsets.shape + (1,)
-            arr = arr.astype(np.int64) + stream_offsets.reshape(ext_shape)
-        else:
-            # Either float32 or float64.  Version 0 used the data type of offsets
-            # and gains to determine this, which was fragile.  We decompress the
-            # data as float32 and then promote if needed.
-            arr = array_decompress(
-                compressed,
-                local_shape[-1],
-                stream_starts,
-                stream_nbytes,
-                stream_offsets=stream_offsets,
-                stream_gains=stream_gains,
-                first_stream_sample=first_samp,
-                last_stream_sample=last_samp,
-                use_threads=use_threads,
-            )
-            if stream_gains.dtype == np.dtype(np.float64):
-                # We want float64
-                arr = arr.astype(np.float64)
-    else:
-        # int32
-        arr = array_decompress(
-            compressed,
-            local_shape[-1],
-            stream_starts,
-            stream_nbytes,
-            stream_offsets=None,
-            stream_gains=None,
-            first_stream_sample=first_samp,
-            last_stream_sample=last_samp,
-            use_threads=use_threads,
-        )
-
+    arr = array_decompress(
+        compressed,
+        local_shape[-1],
+        stream_starts,
+        stream_nbytes,
+        stream_offsets=stream_offsets,
+        stream_gains=stream_gains,
+        first_stream_sample=first_samp,
+        last_stream_sample=last_samp,
+        use_threads=use_threads,
+        is_int64=(n_channel == 2),
+    )
     if keep_indices:
         return arr, indices
     else:

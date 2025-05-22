@@ -54,13 +54,13 @@ def distribute_and_verify(mpi_comm, n_elem, mpi_dist=None):
                 raise RuntimeError(msg)
             return mpi_dist
         if mpi_comm.size != len(mpi_dist):
-            raise RuntimeError(
-                "If specified, mpi_dist should have same length as comm size"
-            )
+            msg = f"If specified, mpi_dist (len={len(mpi_dist)}) should have same "
+            msg += f"length as comm size ({mpi_comm.size})"
+            raise RuntimeError(msg)
         if mpi_dist[0][0] != 0 or mpi_dist[-1][1] != n_elem:
-            raise RuntimeError(
-                "If specified, mpi_dist should span the full range of elements"
-            )
+            msg = f"If specified, mpi_dist ({mpi_dist[0][0]} ... {mpi_dist[-1][1]})"
+            msg += f" should span the full range of elements ({n_elem})"
+            raise RuntimeError(msg)
         for proc in range(1, mpi_comm.size):
             if mpi_dist[proc][0] != mpi_dist[proc - 1][1]:
                 raise RuntimeError(
@@ -77,7 +77,7 @@ def distribute_and_verify(mpi_comm, n_elem, mpi_dist=None):
             ]
         else:
             # Compute the mpi_dist- just uniform distribution
-            chunks = np.split(np.arange(n_elem, dtype=np.int64), mpi_comm.size)
+            chunks = np.array_split(np.arange(n_elem, dtype=np.int64), mpi_comm.size)
             return [(x[0], x[-1] + 1) for x in chunks]
 
 

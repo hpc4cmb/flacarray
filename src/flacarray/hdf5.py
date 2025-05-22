@@ -112,6 +112,7 @@ def write_compressed(
     stream_offsets,
     stream_gains,
     compressed,
+    n_channels,
     local_nbytes,
     global_nbytes,
     global_process_nbytes,
@@ -138,9 +139,10 @@ def write_compressed(
         stream_starts (array):  The local starting byte offsets for each stream.
         global_stream_starts (array):  The global starting byte offsets for each stream.
         stream_nbytes (array):  The local number of bytes for each stream.
-        stream_offsets (array):  The offsets used in int32 conversion.
-        stream_gains (array):  The gains used in int32 conversion.
+        stream_offsets (array):  The offsets used in int conversion.
+        stream_gains (array):  The gains used in int conversion.
         compressed (array):  The compressed bytes.
+        n_channels (int):  The number of FLAC channels used (1 or 2).
         local_nbytes (int):  The total number of local compressed bytes.
         global_nbytes (int):  The total global compressed bytes.
         global_process_nbytes (list):  The number of compressed bytes on each process.
@@ -154,12 +156,13 @@ def write_compressed(
     if not have_hdf5:
         raise RuntimeError("h5py is not importable, cannot write to HDF5")
 
-    # Writer is currently using version 0
-    from .hdf5_load_v0 import hdf5_names as hnames
+    # Writer is currently using version 1
+    from .hdf5_load_v1 import hdf5_names as hnames
 
     comm = mpi_comm
 
     use_serial = hdf5_use_serial(hgrp, comm)
+    print(f"use_serial({hgrp}, {comm}) -> {use_serial}", flush=True)
 
     if comm is None:
         nproc = 1
@@ -175,10 +178,12 @@ def write_compressed(
     dsgain = None
 
     if rank == 0 or not use_serial:
+        print(f"if:  rank = {rank} ? 0 OR not use_serial = {not use_serial}", flush=True)
         # This process is participating.  Write the format version string
         # to the top-level group.
-        hgrp.attrs["flacarray_format_version"] = 0
+        hgrp.attrs["flacarray_format_version"] = "1"
         hgrp.attrs["flacarray_software_version"] = flacarray_version
+        hgrp.attrs[hnames["flac_channels"]] = f"{n_channels}"
 
         # Create the datasets.  We create the start bytes and auxiliary datasets first
         # and attach any metadata keys to the start bytes dataset (which is always
@@ -328,6 +333,12 @@ def write_array(
     global_shape = global_props["shape"]
     mpi_dist = global_props["dist"]
 
+    # Get the number of channels
+    if arr.dtype == np.dtype(np.int64) or arr.dtype == np.dtype(np.float64):
+        n_channels = 2
+    else:
+        n_channels = 1
+
     # Compress our local piece of the array
     compressed, starts, nbytes, offsets, gains = array_compress(
         arr, level=level, quanta=quanta, precision=precision, use_threads=use_threads
@@ -355,6 +366,7 @@ def write_array(
         offsets,
         gains,
         compressed,
+        n_channels,
         local_nbytes,
         global_nbytes,
         global_proc_bytes,
