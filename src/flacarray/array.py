@@ -71,6 +71,7 @@ class FlacArray:
         shape=None,
         global_shape=None,
         compressed=None,
+        dtype=None,
         stream_starts=None,
         stream_nbytes=None,
         stream_offsets=None,
@@ -84,6 +85,7 @@ class FlacArray:
             self._shape = copy.deepcopy(other._shape)
             self._global_shape = copy.deepcopy(other._global_shape)
             self._compressed = copy.deepcopy(other._compressed)
+            self._dtype = np.dtype(other._dtype)
             self._stream_starts = copy.deepcopy(other._stream_starts)
             self._stream_nbytes = copy.deepcopy(other._stream_nbytes)
             self._stream_offsets = copy.deepcopy(other._stream_offsets)
@@ -97,6 +99,7 @@ class FlacArray:
             self._shape = shape
             self._global_shape = global_shape
             self._compressed = compressed
+            self._dtype = np.dtype(dtype)
             self._stream_starts = stream_starts
             self._stream_nbytes = stream_nbytes
             self._stream_offsets = stream_offsets
@@ -120,19 +123,23 @@ class FlacArray:
         else:
             self._global_leading_shape = self._global_shape[:-1]
         self._global_nstreams = np.prod(self._global_leading_shape)
-        # For reference, record the type of the original data.
-        if self._stream_offsets is not None:
-            if self._stream_gains is not None:
-                # This is floating point data
-                if self._stream_gains.dtype == np.dtype(np.float64):
-                    self._typestr = "float64"
-                else:
-                    self._typestr = "float32"
-            else:
-                # This is int64 data
-                self._typestr = "int64"
+        # For reference, record the type string of the original data.
+        self._typestr = self._dtype_str(self._dtype)
+
+    @staticmethod
+    def _dtype_str(dt):
+        if dt == np.dtype(np.float64):
+            return "float64"
+        elif dt == np.dtype(np.float32):
+            return "float32"
+        elif dt == np.dtype(np.int64):
+            return "int64"
+        elif dt == np.dtype(np.int32):
+            return "int32"
         else:
-            self._typestr = "int32"
+            msg = f"Unsupported dtype '{dt}'"
+            raise RuntimeError(msg)
+        return None
 
     # Shapes of decompressed array
 
@@ -241,10 +248,10 @@ class FlacArray:
         return view
 
     def _slice_nelem(self, slc, dim):
-        islc = slc.indices(dim)
-        nslc = (islc[1] - islc[0]) // islc[2]
-        if islc[1] < islc[0]:
-            nslc += 1
+        start, stop, step = slc.indices(dim)
+        nslc = (stop - start) // step
+        if nslc < 0:
+            nslc = 0
         return nslc
 
     def __getitem__(self, key):
@@ -305,6 +312,9 @@ class FlacArray:
             keep_slice.extend(
                 [slice(None) for x in range(len(self._leading_shape) - len(key))]
             )
+            output_shape.extend(
+                [x for x in self._leading_shape[len(key):]]
+            )
         else:
             # We are slicing / indexing only the leading dimension
             keep_slice = [slice(None) for x in range(len(self._leading_shape))]
@@ -314,23 +324,30 @@ class FlacArray:
                 # the number of elements in the output shape.
                 nslc = self._slice_nelem(key, self._shape[0])
                 output_shape.append(nslc)
-
+            output_shape.extend(
+                [x for x in self._leading_shape[1:]]
+            )
         keep = self._keep_view(tuple(keep_slice))
         output_shape = tuple(output_shape)
-
-        arr, strm_indices = array_decompress_slice(
-            self._compressed,
-            self._stream_size,
-            self._stream_starts,
-            self._stream_nbytes,
-            stream_offsets=self._stream_offsets,
-            stream_gains=self._stream_gains,
-            keep=keep,
-            first_stream_sample=first,
-            last_stream_sample=last,
-        )
         full_shape = output_shape + sample_shape
-        return arr.reshape(full_shape)
+        n_total = np.prod(full_shape)
+        if n_total == 0:
+            # At least one dimension was zero, return empty array
+            return np.zeros(full_shape, dtype=self._dtype)
+        else:
+            # We have some samples
+            arr, strm_indices = array_decompress_slice(
+                self._compressed,
+                self._stream_size,
+                self._stream_starts,
+                self._stream_nbytes,
+                stream_offsets=self._stream_offsets,
+                stream_gains=self._stream_gains,
+                keep=keep,
+                first_stream_sample=first,
+                last_stream_sample=last,
+            )
+            return arr.reshape(full_shape)
 
     def __delitem__(self, key):
         raise RuntimeError("Cannot delete individual streams")

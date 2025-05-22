@@ -188,6 +188,10 @@ class ArrayTest(unittest.TestCase):
 
         # Try some slices and verify expected result shape.
         for dslc in [
+            (slice(0)),
+            (slice(1, 3)),
+            (slice(3, 1)),
+            (slice(3, 1, -1)),
             (1, 2, 5, 50),
             (1, 2, 5),
             (2, slice(0, 1, 1), slice(0, 1, 1), slice(None)),
