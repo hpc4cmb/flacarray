@@ -240,6 +240,11 @@ class FlacArray:
         """The range of the leading dimension assigned to each MPI process."""
         return self._mpi_dist
 
+    @property
+    def dtype(self):
+        """The dtype of the uncompressed array."""
+        return self._dtype
+
     def _keep_view(self, key):
         if len(key) != len(self._leading_shape):
             raise ValueError("view size does not match leading dimensions")
@@ -254,7 +259,7 @@ class FlacArray:
             nslc = 0
         return nslc
 
-    def __getitem__(self, key):
+    def __getitem__(self, raw_key):
         """Decompress a slice of data on the fly."""
         first = None
         last = None
@@ -262,71 +267,61 @@ class FlacArray:
         ndim = len(self._shape)
         output_shape = list()
         sample_shape = (self._shape[-1],)
-        if isinstance(key, tuple):
-            # We are slicing on multiple dimensions
-            keep_slice = list()
-            for axis, axkey in enumerate(key):
-                if axis < ndim - 1:
-                    # One of the leading dimensions
-                    keep_slice.append(axkey)
-                    if not isinstance(axkey, (int, np.integer)):
-                        # Some kind of slice, do not compress this dimension.  Compute
-                        # the number of elements in the output shape.
-                        nslc = self._slice_nelem(axkey, self._shape[axis])
-                        output_shape.append(nslc)
-                else:
-                    # This is the sample axis.  Special handling to ensure that the
-                    # selected samples are contiguous.
-                    if isinstance(axkey, slice):
-                        # A slice
-                        if (axkey.step is not None and axkey.step != 1):
-                            msg = "Only stride==1 supported on stream slices"
-                            raise ValueError(msg)
-                        if (
-                            axkey.start is not None
-                            and axkey.stop is not None
-                            and axkey.stop < axkey.start
-                        ):
-                            msg = "Only increasing slices supported on streams"
-                            raise ValueError(msg)
-                        first = axkey.start
-                        last = axkey.stop
-                        if first is None or first < 0:
-                            first = 0
-                        if first > self._shape[-1] - 1:
-                            first = self._shape[-1] - 1
-                        if last is None or last > self._shape[-1]:
-                            last = self._shape[-1]
-                        if last < 1:
-                            last = 1
-                        sample_shape = (last - first,)
-                    elif isinstance(axkey, (int, np.integer)):
-                        # Just a scalar
-                        first = axkey
-                        last = axkey + 1
-                        sample_shape = ()
-                    else:
-                        raise ValueError(
-                            "Only contiguous slices supported on the stream dimension"
-                        )
-            keep_slice.extend(
-                [slice(None) for x in range(len(self._leading_shape) - len(key))]
-            )
-            output_shape.extend(
-                [x for x in self._leading_shape[len(key):]]
-            )
+        if isinstance(raw_key, tuple):
+            key = raw_key
         else:
-            # We are slicing / indexing only the leading dimension
-            keep_slice = [slice(None) for x in range(len(self._leading_shape))]
-            keep_slice[0] = key
-            if not isinstance(key, (int, np.integer)):
-                # Some kind of slice, do not compress this dimension.  Compute
-                # the number of elements in the output shape.
-                nslc = self._slice_nelem(key, self._shape[0])
-                output_shape.append(nslc)
-            output_shape.extend(
-                [x for x in self._leading_shape[1:]]
-            )
+            key = (raw_key,)
+        keep_slice = list()
+        for axis, axkey in enumerate(key):
+            if axis < ndim - 1:
+                # One of the leading dimensions
+                keep_slice.append(axkey)
+                if not isinstance(axkey, (int, np.integer)):
+                    # Some kind of slice, do not compress this dimension.  Compute
+                    # the number of elements in the output shape.
+                    nslc = self._slice_nelem(axkey, self._shape[axis])
+                    output_shape.append(nslc)
+            else:
+                # This is the sample axis.  Special handling to ensure that the
+                # selected samples are contiguous.
+                if isinstance(axkey, slice):
+                    # A slice
+                    if (axkey.step is not None and axkey.step != 1):
+                        msg = "Only stride==1 supported on stream slices"
+                        raise ValueError(msg)
+                    if (
+                        axkey.start is not None
+                        and axkey.stop is not None
+                        and axkey.stop < axkey.start
+                    ):
+                        msg = "Only increasing slices supported on streams"
+                        raise ValueError(msg)
+                    first = axkey.start
+                    last = axkey.stop
+                    if first is None or first < 0:
+                        first = 0
+                    if first > self._shape[-1] - 1:
+                        first = self._shape[-1] - 1
+                    if last is None or last > self._shape[-1]:
+                        last = self._shape[-1]
+                    if last < 1:
+                        last = 1
+                    sample_shape = (last - first,)
+                elif isinstance(axkey, (int, np.integer)):
+                    # Just a scalar
+                    first = axkey
+                    last = axkey + 1
+                    sample_shape = ()
+                else:
+                    raise ValueError(
+                        "Only contiguous slices supported on the stream dimension"
+                    )
+        keep_slice.extend(
+            [slice(None) for x in range(len(self._leading_shape) - len(key))]
+        )
+        output_shape.extend(
+            [x for x in self._leading_shape[len(key):]]
+        )
         keep = self._keep_view(tuple(keep_slice))
         output_shape = tuple(output_shape)
         full_shape = output_shape + sample_shape
