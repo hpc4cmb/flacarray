@@ -71,6 +71,7 @@ class FlacArray:
         shape=None,
         global_shape=None,
         compressed=None,
+        dtype=None,
         stream_starts=None,
         stream_nbytes=None,
         stream_offsets=None,
@@ -84,6 +85,7 @@ class FlacArray:
             self._shape = copy.deepcopy(other._shape)
             self._global_shape = copy.deepcopy(other._global_shape)
             self._compressed = copy.deepcopy(other._compressed)
+            self._dtype = np.dtype(other._dtype)
             self._stream_starts = copy.deepcopy(other._stream_starts)
             self._stream_nbytes = copy.deepcopy(other._stream_nbytes)
             self._stream_offsets = copy.deepcopy(other._stream_offsets)
@@ -97,6 +99,7 @@ class FlacArray:
             self._shape = shape
             self._global_shape = global_shape
             self._compressed = compressed
+            self._dtype = np.dtype(dtype)
             self._stream_starts = stream_starts
             self._stream_nbytes = stream_nbytes
             self._stream_offsets = stream_offsets
@@ -120,19 +123,23 @@ class FlacArray:
         else:
             self._global_leading_shape = self._global_shape[:-1]
         self._global_nstreams = np.prod(self._global_leading_shape)
-        # For reference, record the type of the original data.
-        if self._stream_offsets is not None:
-            if self._stream_gains is not None:
-                # This is floating point data
-                if self._stream_gains.dtype == np.dtype(np.float64):
-                    self._typestr = "float64"
-                else:
-                    self._typestr = "float32"
-            else:
-                # This is int64 data
-                self._typestr = "int64"
+        # For reference, record the type string of the original data.
+        self._typestr = self._dtype_str(self._dtype)
+
+    @staticmethod
+    def _dtype_str(dt):
+        if dt == np.dtype(np.float64):
+            return "float64"
+        elif dt == np.dtype(np.float32):
+            return "float32"
+        elif dt == np.dtype(np.int64):
+            return "int64"
+        elif dt == np.dtype(np.int32):
+            return "int32"
         else:
-            self._typestr = "int32"
+            msg = f"Unsupported dtype '{dt}'"
+            raise RuntimeError(msg)
+        return None
 
     # Shapes of decompressed array
 
@@ -233,6 +240,11 @@ class FlacArray:
         """The range of the leading dimension assigned to each MPI process."""
         return self._mpi_dist
 
+    @property
+    def dtype(self):
+        """The dtype of the uncompressed array."""
+        return self._dtype
+
     def _keep_view(self, key):
         if len(key) != len(self._leading_shape):
             raise ValueError("view size does not match leading dimensions")
@@ -240,56 +252,97 @@ class FlacArray:
         view[key] = True
         return view
 
-    def __getitem__(self, key):
+    def _slice_nelem(self, slc, dim):
+        start, stop, step = slc.indices(dim)
+        nslc = (stop - start) // step
+        if nslc < 0:
+            nslc = 0
+        return nslc
+
+    def __getitem__(self, raw_key):
         """Decompress a slice of data on the fly."""
         first = None
         last = None
         keep = None
-        if isinstance(key, tuple):
-            # We are slicing on multiple dimensions
-            if len(key) == len(self._shape):
-                # Slicing on the sample dimension too
-                keep = self._keep_view(key[:-1])
-                samp_key = key[-1]
-                if isinstance(samp_key, slice):
+        ndim = len(self._shape)
+        output_shape = list()
+        sample_shape = (self._shape[-1],)
+        if isinstance(raw_key, tuple):
+            key = raw_key
+        else:
+            key = (raw_key,)
+        keep_slice = list()
+        for axis, axkey in enumerate(key):
+            if axis < ndim - 1:
+                # One of the leading dimensions
+                keep_slice.append(axkey)
+                if not isinstance(axkey, (int, np.integer)):
+                    # Some kind of slice, do not compress this dimension.  Compute
+                    # the number of elements in the output shape.
+                    nslc = self._slice_nelem(axkey, self._shape[axis])
+                    output_shape.append(nslc)
+            else:
+                # This is the sample axis.  Special handling to ensure that the
+                # selected samples are contiguous.
+                if isinstance(axkey, slice):
                     # A slice
-                    if samp_key.step is not None and samp_key.step != 1:
-                        raise ValueError("Only stride==1 supported on stream slices")
-                    first = samp_key.start
-                    last = samp_key.stop
-                elif isinstance(samp_key, (int, np.integer)):
+                    if (axkey.step is not None and axkey.step != 1):
+                        msg = "Only stride==1 supported on stream slices"
+                        raise ValueError(msg)
+                    if (
+                        axkey.start is not None
+                        and axkey.stop is not None
+                        and axkey.stop < axkey.start
+                    ):
+                        msg = "Only increasing slices supported on streams"
+                        raise ValueError(msg)
+                    first = axkey.start
+                    last = axkey.stop
+                    if first is None or first < 0:
+                        first = 0
+                    if first > self._shape[-1] - 1:
+                        first = self._shape[-1] - 1
+                    if last is None or last > self._shape[-1]:
+                        last = self._shape[-1]
+                    if last < 1:
+                        last = 1
+                    sample_shape = (last - first,)
+                elif isinstance(axkey, (int, np.integer)):
                     # Just a scalar
-                    first = samp_key
-                    last = samp_key + 1
+                    first = axkey
+                    last = axkey + 1
+                    sample_shape = ()
                 else:
                     raise ValueError(
                         "Only contiguous slices supported on the stream dimension"
                     )
-            else:
-                # Only slicing the leading dimensions
-                vw = list(key)
-                vw.extend(
-                    [slice(None) for x in range(len(self._leading_shape) - len(key))]
-                )
-                keep = self._keep_view(tuple(vw))
-        else:
-            # We are slicing / indexing only the leading dimension
-            vw = [slice(None) for x in range(len(self._leading_shape))]
-            vw[0] = key
-            keep = self._keep_view(tuple(vw))
-
-        arr, _ = array_decompress_slice(
-            self._compressed,
-            self._stream_size,
-            self._stream_starts,
-            self._stream_nbytes,
-            stream_offsets=self._stream_offsets,
-            stream_gains=self._stream_gains,
-            keep=keep,
-            first_stream_sample=first,
-            last_stream_sample=last,
+        keep_slice.extend(
+            [slice(None) for x in range(len(self._leading_shape) - len(key))]
         )
-        return arr
+        output_shape.extend(
+            [x for x in self._leading_shape[len(key):]]
+        )
+        keep = self._keep_view(tuple(keep_slice))
+        output_shape = tuple(output_shape)
+        full_shape = output_shape + sample_shape
+        n_total = np.prod(full_shape)
+        if n_total == 0:
+            # At least one dimension was zero, return empty array
+            return np.zeros(full_shape, dtype=self._dtype)
+        else:
+            # We have some samples
+            arr, strm_indices = array_decompress_slice(
+                self._compressed,
+                self._stream_size,
+                self._stream_starts,
+                self._stream_nbytes,
+                stream_offsets=self._stream_offsets,
+                stream_gains=self._stream_gains,
+                keep=keep,
+                first_stream_sample=first,
+                last_stream_sample=last,
+            )
+            return arr.reshape(full_shape)
 
     def __delitem__(self, key):
         raise RuntimeError("Cannot delete individual streams")
