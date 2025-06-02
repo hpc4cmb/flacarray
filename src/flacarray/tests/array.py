@@ -201,3 +201,34 @@ class ArrayTest(unittest.TestCase):
                     flush=True,
                 )
                 raise RuntimeError("Failed slice shape check")
+
+    def test_slicing_1D(self):
+        data_shape = (10000,)
+        flatsize = np.prod(data_shape)
+        rng = np.random.default_rng()
+        data_i32 = (
+            rng.integers(low=-(2**27), high=2**30, size=flatsize, dtype=np.int32)
+            .reshape(data_shape)
+            .astype(np.int32)
+        )
+
+        farray = FlacArray.from_array(data_i32)
+
+        # Try some slices and verify expected result shape.
+        for dslc in [
+            (slice(0)),
+            (slice(1, 3)),
+            (100,)
+        ]:
+            # Slice of the original numpy array
+            check = data_i32[dslc]
+            # Slice of the FlacArray
+            fcheck = farray[dslc]
+
+            # Compare the shapes
+            if fcheck.shape != check.shape:
+                print(
+                    f"Array[{dslc}] shape: {fcheck.shape} != {check.shape}",
+                    flush=True,
+                )
+                raise RuntimeError("Failed slice shape check")

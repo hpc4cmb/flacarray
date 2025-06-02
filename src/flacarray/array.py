@@ -108,15 +108,27 @@ class FlacArray:
         self._init_params()
 
     def _init_params(self):
+        # The input `_shape` parameter is the original shape when the instance
+        # was created from an array or read from disk.  In the case of a single
+        # stream, this tracks the user intentions about whether to flatten the
+        # leading dimension.  We also track the "local shape", with is the same,
+        # but which always keeps the leading dimension.
+        if len(self._shape) == 1:
+            self._flatten_single = True
+            self._local_shape = (1, self._shape[0])
+        else:
+            self._flatten_single = False
+            self._local_shape = self._shape
+
         self._local_nbytes = self._compressed.nbytes
         (
             self._global_nbytes,
             self._global_proc_nbytes,
             self._global_stream_starts,
         ) = global_bytes(self._local_nbytes, self._stream_starts, self._mpi_comm)
-        self._leading_shape = self._shape[:-1]
+        self._leading_shape = self._local_shape[:-1]
         self._global_leading_shape = self._global_shape[:-1]
-        self._stream_size = self._shape[-1]
+        self._stream_size = self._local_shape[-1]
 
         # For reference, record the type string of the original data.
         self._typestr = self._dtype_str(self._dtype)
@@ -165,7 +177,7 @@ class FlacArray:
     @property
     def stream_size(self):
         """The uncompressed length of each stream."""
-        return self._shape[-1]
+        return self._stream_size
 
     # Properties of the compressed data
 
@@ -249,92 +261,167 @@ class FlacArray:
         """A string representation of the original data type."""
         return self._typestr
 
-    def _keep_view(self, key):
-        if len(key) != len(self._leading_shape):
-            raise ValueError("view size does not match leading dimensions")
-        view = np.zeros(self._leading_shape, dtype=bool)
-        view[key] = True
-        return view
+    # __getitem__ slicing / decompression on the fly and associated
+    # helper functions.
 
     def _slice_nelem(self, slc, dim):
+        """Get the number of elements in a slice."""
         start, stop, step = slc.indices(dim)
         nslc = (stop - start) // step
         if nslc < 0:
             nslc = 0
         return nslc
 
-    def __getitem__(self, raw_key):
-        """Decompress a slice of data on the fly."""
-        first = None
-        last = None
-        keep = None
-        ndim = len(self._shape)
-        output_shape = list()
-        sample_shape = (self._shape[-1],)
-        if isinstance(raw_key, tuple):
-            key = raw_key
-        else:
-            key = (raw_key,)
-        keep_slice = list()
-        for axis, axkey in enumerate(key):
-            if axis < ndim - 1:
-                # One of the leading dimensions
-                keep_slice.append(axkey)
-                if not isinstance(axkey, (int, np.integer)):
-                    # Some kind of slice, do not compress this dimension.  Compute
-                    # the number of elements in the output shape.
-                    nslc = self._slice_nelem(axkey, self._shape[axis])
-                    output_shape.append(nslc)
+    def _keep_view(self, key):
+        """Convert leading-shape key to bool array."""
+        if len(key) != len(self._leading_shape):
+            msg = f"keep_view {key} does not match leading "
+            msg += f"dimensions {len(self._leading_shape)}"
+            raise ValueError(msg)
+        view = np.zeros(self._leading_shape, dtype=bool)
+        view[key] = True
+        return view
+
+    def _get_full_key(self, key):
+        """Process the incoming key so that it covers all dimensions.
+
+        Args:
+            key (tuple):  The input key consisting of an integer or a tuple
+                of slices and / or integers.
+
+        Result:
+            (tuple):  The full key.
+
+        """
+        ndim = len(self._local_shape)
+        full_key = list()
+        if self._flatten_single:
+            # Our array is a single stream with flattened shape.  The user
+            # supplied key should only contain the sample axis.
+            if isinstance(key, tuple):
+                # It better have length == 1...
+                if len(key) != 1:
+                    msg = f"Slice key {key} is not valid for single, "
+                    msg += "flattened stream."
+                    raise ValueError(msg)
+                full_key = [0, key[0]]
             else:
-                # This is the sample axis.  Special handling to ensure that the
-                # selected samples are contiguous.
-                if isinstance(axkey, slice):
-                    # A slice
-                    if axkey.step is not None and axkey.step != 1:
-                        msg = "Only stride==1 supported on stream slices"
-                        raise ValueError(msg)
-                    if (
-                        axkey.start is not None
-                        and axkey.stop is not None
-                        and axkey.stop < axkey.start
-                    ):
-                        msg = "Only increasing slices supported on streams"
-                        raise ValueError(msg)
-                    first = axkey.start
-                    last = axkey.stop
-                    if first is None or first < 0:
-                        first = 0
-                    if first > self._shape[-1] - 1:
-                        first = self._shape[-1] - 1
-                    if last is None or last > self._shape[-1]:
-                        last = self._shape[-1]
-                    if last < 1:
-                        last = 1
-                    sample_shape = (last - first,)
-                elif isinstance(axkey, (int, np.integer)):
-                    # Just a scalar
-                    first = axkey
-                    last = axkey + 1
-                    sample_shape = ()
+                # Single element, compress sample dimension
+                full_key = [0, key]
+        else:
+            if isinstance(key, tuple):
+                for axis, axkey in enumerate(key):
+                    full_key.append(axkey)
+            else:
+                full_key.append(key)
+
+        if len(full_key) > ndim:
+            msg = f"Invalid slice key {key}, too many dimensions"
+            raise ValueError(msg)
+
+        # Fill in remaining dimensions
+        filled = len(full_key)
+        full_key.extend([slice(None) for x in range(len(self._local_shape) - filled)])
+        return full_key
+
+    def _get_leading_axes(self, full_key):
+        """Process the leading axes.
+
+        Args:
+            full_key (tuple):  The full-rank selection key.
+
+        Returns:
+            (tuple):  The (leading_shape, keep array).
+
+        """
+        leading_shape = list()
+        keep_slice = list()
+
+        if self._flatten_single:
+            # Our array is a single stream with flattened shape.
+            keep_slice = [0,]
+        else:
+            for axis, axkey in enumerate(full_key[:-1]):
+                if not isinstance(axkey, (int, np.integer)):
+                    # Some kind of slice, do not compress this dimension.
+                    nslc = self._slice_nelem(axkey, self._local_shape[axis])
+                    leading_shape.append(nslc)
                 else:
-                    raise ValueError(
-                        "Only contiguous slices supported on the stream dimension"
-                    )
-        keep_slice.extend(
-            [slice(None) for x in range(len(self._leading_shape) - len(key))]
-        )
-        output_shape.extend([x for x in self._leading_shape[len(key) :]])
-        keep = self._keep_view(tuple(keep_slice))
-        if len(keep) == 0:
+                    # Check for validity
+                    if axkey < 0 or axkey >= self._local_shape[axis]:
+                        # Insert a zero-length dimension so that a zero-length
+                        # array is returned in the calling code.
+                        leading_shape.append(0)
+                    else:
+                        # This dimension is a single element and will be
+                        # compressed.
+                        pass
+                keep_slice.append(axkey)
+        leading_shape = tuple(leading_shape)
+        keep_slice = tuple(keep_slice)
+        if len(keep_slice) == 0:
             keep = None
-        output_shape = tuple(output_shape)
-        full_shape = output_shape + sample_shape
-        n_total = np.prod(full_shape)
+        else:
+            keep = self._keep_view(keep_slice)
+        return leading_shape, keep
+
+    def _get_sample_axis(self, full_key):
+        """Process any slicing of the stream axis.
+
+        Args:
+            full_key (tuple):  The full-rank selection key.
+
+        Returns:
+            (tuple):  The (first, last, sample_shape).
+
+        """
+        sample_key = full_key[-1]
+        if sample_key is None:
+            return (0, self._stream_size, (self._stream_size,))
+        if isinstance(sample_key, slice):
+            start, stop, step = sample_key.indices(self._stream_size)
+            if step != 1:
+                msg = "Only stride==1 supported on stream slices"
+                raise ValueError(msg)
+            if stop - start <= 0:
+                # No samples
+                return (0, 0, (0,))
+            return (start, stop, (stop-start,))
+        elif isinstance(sample_key, (int, np.integer)):
+            # Just a scalar
+            return (sample_key, sample_key + 1, ())
+        else:
+            msg = "Stream dimension supports contiguous slices or single indices."
+            raise ValueError(msg)
+
+    def __getitem__(self, raw_key):
+        """Decompress a slice of data on the fly.
+
+        Args:
+            raw_key (tuple):  A tuple of slices or integers.
+
+        Returns:
+            (array):  The decompressed array slice.
+
+        """
+        # Get the key for all dimensions
+        key = self._get_full_key(raw_key)
+
+        # Compute the output leading shape and keep array
+        leading_shape, keep = self._get_leading_axes(key)
+
+        # Compute sample axis slice
+        first, last, sample_shape = self._get_sample_axis(key)
+
+        full_shape = leading_shape + sample_shape
+        if len(full_shape) == 0:
+            n_total = 0
+        else:
+            n_total = np.prod(full_shape)
         if n_total == 0:
             # At least one dimension was zero, return empty array
             return np.zeros(full_shape, dtype=self._dtype)
         else:
-            # We have some samples
             arr, strm_indices = array_decompress_slice(
                 self._compressed,
                 self._stream_size,
@@ -422,7 +509,6 @@ class FlacArray:
         stream_slice=None,
         keep_indices=False,
         use_threads=False,
-        no_flatten=False,
     ):
         """Decompress local data into a numpy array.
 
@@ -454,8 +540,6 @@ class FlacArray:
                 streams.
             use_threads (bool):  If True, use OpenMP threads to parallelize decoding.
                 This is only beneficial for large arrays.
-            no_flatten (bool):  If True, for single-stream arrays, leave the leading
-                dimension of (1,) in the result.
 
         """
         first_samp = None
@@ -480,7 +564,7 @@ class FlacArray:
             last_stream_sample=last_samp,
             is_int64=self._is_int64,
             use_threads=use_threads,
-            no_flatten=no_flatten,
+            no_flatten=(not self._flatten_single),
         )
         if keep is not None and keep_indices:
             return (arr, indices)
@@ -525,14 +609,10 @@ class FlacArray:
             precision=precision,
             use_threads=use_threads,
         )
-        if len(arr.shape) == 1:
-            local_shape = (1, arr.shape[0])
-        else:
-            local_shape = arr.shape
 
         return FlacArray(
             None,
-            shape=local_shape,
+            shape=arr.shape,
             global_shape=global_shape,
             compressed=compressed,
             dtype=arr.dtype,
@@ -595,6 +675,7 @@ class FlacArray:
         keep=None,
         mpi_comm=None,
         mpi_dist=None,
+        no_flatten=False,
     ):
         """Construct a FlacArray from an HDF5 Group.
 
@@ -623,6 +704,8 @@ class FlacArray:
                 distribute the leading dimension.
             mpi_dist (array):  If specified, assign blocks of these sizes to processes
                 when distributing the leading dimension.
+            no_flatten (bool):  If True, for single-stream arrays, leave the leading
+                dimension of (1,) in the result.
 
         Returns:
             (FlacArray):  A newly constructed FlacArray.
@@ -648,9 +731,15 @@ class FlacArray:
 
         dt = compressed_dtype(n_channels, stream_offsets, stream_gains)
 
+        if (len(local_shape) == 2 and local_shape[0] == 1) and not no_flatten:
+            # Flatten
+            shape = (local_shape[1],)
+        else:
+            shape = local_shape
+
         return FlacArray(
             None,
-            shape=local_shape,
+            shape=shape,
             global_shape=global_shape,
             compressed=compressed,
             dtype=dt,
@@ -708,6 +797,7 @@ class FlacArray:
         keep=None,
         mpi_comm=None,
         mpi_dist=None,
+        no_flatten=False,
     ):
         """Construct a FlacArray from a Zarr Group.
 
@@ -734,6 +824,8 @@ class FlacArray:
                 distribute the leading dimension.
             mpi_dist (array):  If specified, assign blocks of these sizes to processes
                 when distributing the leading dimension.
+            no_flatten (bool):  If True, for single-stream arrays, leave the leading
+                dimension of (1,) in the result.
 
         Returns:
             (FlacArray):  A newly constructed FlacArray.
@@ -759,9 +851,15 @@ class FlacArray:
 
         dt = compressed_dtype(n_channels, stream_offsets, stream_gains)
 
+        if (len(local_shape) == 2 and local_shape[0] == 1) and not no_flatten:
+            # Flatten
+            shape = (local_shape[1],)
+        else:
+            shape = local_shape
+
         return FlacArray(
             None,
-            shape=local_shape,
+            shape=shape,
             global_shape=global_shape,
             compressed=compressed,
             dtype=dt,
