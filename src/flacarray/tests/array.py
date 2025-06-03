@@ -35,7 +35,7 @@ class ArrayTest(unittest.TestCase):
             for dt, dtstr, sigma, quant in [
                 (np.dtype(np.int32), "i32", None, None),
                 (np.dtype(np.int64), "i64", None, None),
-                (np.dtype(np.float32), "f32", 1.0, None),
+                (np.dtype(np.float32), "f32", 1.0, 1.0e-6),
                 (np.dtype(np.float64), "f64", 1.0, 1.0e-7),
             ]:
                 ftol = 1.0e-5
@@ -146,12 +146,13 @@ class ArrayTest(unittest.TestCase):
 
     def test_array_memory(self):
         data_shape = (4, 3, 10000)
+        quanta = 1.0e-16
         data_f64, _ = create_fake_data(data_shape, 1.0)
         n_half = 5
         first = data_shape[-1] // 2 - n_half
         last = data_shape[-1] // 2 + n_half
 
-        farray = FlacArray.from_array(data_f64)
+        farray = FlacArray.from_array(data_f64, quanta=quanta)
         check_f64 = farray.to_array()
         self.assertTrue(np.allclose(check_f64, data_f64, rtol=1e-15, atol=1e-15))
 

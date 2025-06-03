@@ -131,7 +131,7 @@ def benchmark(
 
     start = time.perf_counter()
     flcarr = FlacArray.from_array(
-        arr, mpi_comm=mpi_comm, use_threads=use_threads
+        arr, quanta=1.0e-15, mpi_comm=mpi_comm, use_threads=use_threads
     )
     if mpi_comm is not None:
         mpi_comm.barrier()
@@ -171,7 +171,7 @@ def benchmark(
     # Run Zarr tests
 
     flcarr = FlacArray.from_array(
-        arr, mpi_comm=mpi_comm, use_threads=use_threads
+        arr, quanta=1.0e-15, mpi_comm=mpi_comm, use_threads=use_threads
     )
 
     out_file = os.path.join(dir, f"io_bench_{shpstr}.zarr")
@@ -208,6 +208,7 @@ def benchmark(
             arr,
             hf.handle,
             level=5,
+            quanta=1.0e-15,
             mpi_comm=mpi_comm,
             use_threads=use_threads,
             mpi_dist=mpi_dist,
@@ -250,6 +251,7 @@ def benchmark(
             arr,
             zf,
             level=5,
+            quanta=1.0e-15,
             mpi_comm=mpi_comm,
             use_threads=use_threads,
             mpi_dist=mpi_dist,

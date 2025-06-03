@@ -29,28 +29,33 @@ class FlacArray:
     stream in the overall bytes array.  The shape of the starting array corresponds
     to the shape of the leading, un-compressed dimensions of the original array.
 
-    The input data is converted to 32bit or 64bit integers.  The "quanta" value is used
-    for floating point data conversion and represents the floating point increment
-    for a single integer value.  If quanta is None, each stream is scaled independently
-    based on its data range.  If quanta is a scalar, all streams are scaled with the
-    same value.  If quanta is an array, it specifies the scaling independently for each
-    stream.
+    If the input data is 32bit or 64bit integers, the array is compressed directly.
+    If the input data is 32bit or 64bit floating point numbers, then you **must**
+    specify exactly one of either quanta or precision.  For floating point data, the
+    mean is first subtracted before rescaling to integers using quanta or precision.
+
+    If you choose a quanta value that is close to machine epsilon (e.g. 1e-6 for 32bit
+    or 1e-15 for 64bit), then the compression amount will be negligible but the results
+    nearly lossless. Compression of floating point data should not be done blindly and
+    you should consider the underlying precision of the data you are working with.
+    If quanta is a scalar, all streams are scaled with the same value.  If quanta is an
+    array, it specifies the scaling independently for each stream.
 
     Alternatively, if "precision" is provided, each data vector is scaled to retain
     the prescribed number of significant digits when converting to integers.
 
-    The following rules specify the data conversion that is performed depending on
+    The following rules summarize the data conversion that is performed depending on
     the input type:
 
     * int32:  No conversion.  Compressed to single channel FLAC bytestream.
 
     * int64:  No conversion.  Compressed to 2-channel (stereo) FLAC bytestream.
 
-    * float32:  Subtract the mean and scale data based on the quanta value (see
-        above).  Then round to nearest 32bit integer.
+    * float32:  Subtract the mean and scale data based on the quanta value or precision
+        (see above).  Then round to nearest 32bit integer.
 
-    * float64:  Subtract the mean and scale data based on the quanta value (see
-        above).  Then round to nearest 64bit integer.
+    * float64:  Subtract the mean and scale data based on the quanta value or precision
+        (see above).  Then round to nearest 64bit integer.
 
     After conversion to integers, each stream's data is separately compressed into a
     sequence of FLAC bytes, which is appended to the bytestream.  The offset in bytes

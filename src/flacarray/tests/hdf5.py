@@ -48,8 +48,8 @@ class HDF5Test(unittest.TestCase):
             for dt, dtstr, sigma, quant in [
                 (np.dtype(np.int32), "i32", None, None),
                 (np.dtype(np.int64), "i64", None, None),
-                (np.dtype(np.float32), "f32", 1.0, None),
-                (np.dtype(np.float64), "f64", 1.0, 1.0e-7),
+                (np.dtype(np.float32), "f32", 1.0, 1.0e-7),
+                (np.dtype(np.float64), "f64", 1.0, 1.0e-15),
             ]:
                 input, mpi_dist = create_fake_data(
                     local_shape, sigma=sigma, dtype=dt, comm=self.comm
@@ -116,17 +116,17 @@ class HDF5Test(unittest.TestCase):
 
         for local_shape in [(4, 3, 1000), (10000,)]:
             shpstr = "x".join([f"{int(x)}" for x in local_shape])
-            for dt, dtstr, sigma in [
-                (np.dtype(np.int32), "i32", None),
-                (np.dtype(np.int64), "i64", None),
-                (np.dtype(np.float32), "f32", 1.0),
-                (np.dtype(np.float64), "f64", 1.0),
+            for dt, dtstr, sigma, quant in [
+                (np.dtype(np.int32), "i32", None, None),
+                (np.dtype(np.int64), "i64", None, None),
+                (np.dtype(np.float32), "f32", 1.0, 1.0e-7),
+                (np.dtype(np.float64), "f64", 1.0, 1.0e-15),
             ]:
                 input, mpi_dist = create_fake_data(
                     local_shape, sigma=sigma, dtype=dt, comm=self.comm
                 )
                 flcarr = FlacArray.from_array(
-                    input, mpi_comm=self.comm, use_threads=True
+                    input, quanta=quant, mpi_comm=self.comm, use_threads=True
                 )
 
                 filename = os.path.join(tmppath, f"data_{dtstr}_{shpstr}.h5")

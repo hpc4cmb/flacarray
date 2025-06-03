@@ -21,9 +21,10 @@ class UtilsTest(unittest.TestCase):
 
     def test_float64(self):
         data_shape = (4, 3, 1000)
+        quanta = 1.0e-16
         data, _ = create_fake_data(data_shape, 1.0)
 
-        idata, offsets, gains = float_to_int(data, quanta=None, precision=None)
+        idata, offsets, gains = float_to_int(data, quanta=quanta, precision=None)
         check = int_to_float(idata, offsets, gains)
         if not np.allclose(check, data, rtol=1e-15, atol=1e-15):
             print("Failed float64 roundtrip")
@@ -46,15 +47,15 @@ class UtilsTest(unittest.TestCase):
             print(f"{check} != {data}", flush=True)
             self.assertTrue(False)
 
-        quant = 1e-5
-        idata, offsets, gains = float_to_int(data, quanta=quant, precision=None)
+        quanta = 1e-5
+        idata, offsets, gains = float_to_int(data, quanta=quanta, precision=None)
         check = int_to_float(idata, offsets, gains)
         if not np.allclose(check, data, rtol=1e-5, atol=1e-4):
             print("Failed float64 quanta roundtrip")
             print(f"{check} != {data}", flush=True)
             self.assertTrue(False)
         idata, offsets, gains = float_to_int(
-            data, quanta=quant * np.ones(data_shape[:-1]), precision=None
+            data, quanta=quanta * np.ones(data_shape[:-1]), precision=None
         )
         check = int_to_float(idata, offsets, gains)
         if not np.allclose(check, data, rtol=1e-5, atol=1e-4):
@@ -64,9 +65,10 @@ class UtilsTest(unittest.TestCase):
 
     def test_float32(self):
         data_shape = (4, 3, 1000)
+        quanta = 1e-6
         data, _ = create_fake_data(data_shape, 1.0)
         data = data.astype(np.float32)
-        idata, offsets, gains = float_to_int(data, quanta=None, precision=None)
+        idata, offsets, gains = float_to_int(data, quanta=quanta, precision=None)
         check = int_to_float(idata, offsets, gains)
         if not np.allclose(check, data, rtol=1e-5, atol=1e-5):
             print("Failed float32 roundtrip")
@@ -89,15 +91,15 @@ class UtilsTest(unittest.TestCase):
             print(f"{check} != {data}", flush=True)
             self.assertTrue(False)
 
-        quant = 1e-5
-        idata, offsets, gains = float_to_int(data, quanta=quant, precision=None)
+        quanta = 1e-5
+        idata, offsets, gains = float_to_int(data, quanta=quanta, precision=None)
         check = int_to_float(idata, offsets, gains)
         if not np.allclose(check, data, rtol=1e-5, atol=1e-4):
             print("Failed float32 quanta roundtrip")
             print(f"{check} != {data}", flush=True)
             self.assertTrue(False)
         idata, offsets, gains = float_to_int(
-            data, quanta=quant * np.ones(data_shape[:-1]), precision=None
+            data, quanta=quanta * np.ones(data_shape[:-1]), precision=None
         )
         check = int_to_float(idata, offsets, gains)
         if not np.allclose(check, data, rtol=1e-5, atol=1e-4):

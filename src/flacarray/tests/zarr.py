@@ -44,11 +44,11 @@ class ZarrTest(unittest.TestCase):
 
         local_shape = (4, 3, 1000)
 
-        for dt, dtstr, sigma in [
-            (np.dtype(np.int32), "i32", None),
-            (np.dtype(np.int64), "i64", None),
-            (np.dtype(np.float32), "f32", 1.0),
-            (np.dtype(np.float64), "f64", 1.0),
+        for dt, dtstr, sigma, quant in [
+            (np.dtype(np.int32), "i32", None, None),
+            (np.dtype(np.int64), "i64", None, None),
+            (np.dtype(np.float32), "f32", 1.0, 1.0e-7),
+            (np.dtype(np.float64), "f64", 1.0, 1.0e-15),
         ]:
             input, mpi_dist = create_fake_data(
                 local_shape, sigma=sigma, dtype=dt, comm=self.comm
@@ -60,7 +60,7 @@ class ZarrTest(unittest.TestCase):
                     input,
                     zf,
                     level=5,
-                    quanta=None,
+                    quanta=quant,
                     precision=None,
                     mpi_comm=self.comm,
                     use_threads=True,
@@ -115,16 +115,18 @@ class ZarrTest(unittest.TestCase):
 
         local_shape = (4, 3, 1000)
 
-        for dt, dtstr, sigma in [
-            (np.dtype(np.int32), "i32", None),
-            (np.dtype(np.int64), "i64", None),
-            (np.dtype(np.float32), "f32", 1.0),
-            (np.dtype(np.float64), "f64", 1.0),
+        for dt, dtstr, sigma, quant in [
+            (np.dtype(np.int32), "i32", None, None),
+            (np.dtype(np.int64), "i64", None, None),
+            (np.dtype(np.float32), "f32", 1.0, 1.0e-7),
+            (np.dtype(np.float64), "f64", 1.0, 1.0e-15),
         ]:
             input, mpi_dist = create_fake_data(
                 local_shape, sigma=sigma, dtype=dt, comm=self.comm
             )
-            flcarr = FlacArray.from_array(input, mpi_comm=self.comm, use_threads=True)
+            flcarr = FlacArray.from_array(
+                input, quanta=quant, mpi_comm=self.comm, use_threads=True
+            )
 
             filename = os.path.join(tmppath, f"data_{dtstr}.zarr")
             with ZarrGroup(filename, mode="w", comm=self.comm) as zf:
