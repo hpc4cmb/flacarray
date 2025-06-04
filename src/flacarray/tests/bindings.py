@@ -32,7 +32,11 @@ class BindingsTest(unittest.TestCase):
         flatsize = n_streams * stream_len
 
         rng = np.random.default_rng()
-        data = rng.integers(low=-(2**28), high=2**28, size=flatsize, dtype=np.int32)
+        data = rng.integers(low=-(2**31), high=2**31, size=flatsize, dtype=np.int32)
+
+        # Set a few values to extrema, to test correct handling
+        data[0] = -2147483647
+        data[1] = 2147483647
 
         compressed, stream_starts, stream_nbytes = wrap_encode_i32_threaded(
             data, n_streams, stream_len, level
@@ -96,7 +100,13 @@ class BindingsTest(unittest.TestCase):
         flatsize = n_streams * stream_len
 
         rng = np.random.default_rng()
-        data = rng.integers(low=-(2**60), high=2**60, size=flatsize, dtype=np.int64)
+        data = rng.integers(low=-(2**63), high=2**63, size=flatsize, dtype=np.int64)
+
+        # Set a few values to extrema, to test correct handling
+        data[0] = -9223372036854775807
+        data[1] = 9223372036854775807
+        data[2] = 4294967296
+        data[3] = -4294967296
 
         compressed, stream_starts, stream_nbytes = wrap_encode_i64_threaded(
             data, n_streams, stream_len, level

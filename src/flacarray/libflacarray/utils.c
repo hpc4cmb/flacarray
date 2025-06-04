@@ -92,6 +92,13 @@ bool is_little_endian() {
 // need to do any byte-swapping here.  We are just ensuring that
 // the two channels represent the same things (high and low order
 // 32bits) across architectures.
+//
+// Another Note:  we are encoding the high and low 32bits as different
+// FLAC channels.  This means that the "sign bit" of the lower 32bit
+// value is actually being interpreted as a "normal" bit.  In other
+// words, imagine you have a 64bit integer with a value of 2^32.  When
+// splitting into two 32bit integers, the high value will be "zero" and
+// the low value would be "-0" (sign bit set, but all other bits zero).
 typedef union {
     int64_t value;
     struct {
@@ -159,8 +166,8 @@ int float32_to_int32(
     float * offsets,
     float * gains
 ) {
-    // FLAC uses an extra bit, so +/- 2^30 is the max range.
-    int64_t flac_max = 1073741824;
+    // FLAC uses signed integers so the max positive value is 2^31 - 1.
+    int32_t flac_max = 2147483647;
 
     float smin;
     float smax;
@@ -170,6 +177,7 @@ int float32_to_int32(
     float squanta;
     float min_quanta;
     float amp;
+    int64_t nquant;
     for (int64_t istream = 0; istream < n_stream; ++istream) {
         smin = input[istream * stream_size];
         smax = input[istream * stream_size];
@@ -186,7 +194,7 @@ int float32_to_int32(
         offsets[istream] = 0.5 * (smin + smax);
 
         // Check the minimum quanta size that can be used without the resulting data
-        // overflowing the 2^30 bit limit.
+        // overflowing the bit limit.
         if ((smin - offsets[istream]) > (smax - offsets[istream])) {
             amp = 1.01 * (smin - offsets[istream]);
         } else {
@@ -208,6 +216,10 @@ int float32_to_int32(
             //     return ERROR_CONVERT_TYPE;
             // }
         }
+
+        // Adjust final offset so that it is a whole number of quanta.
+        nquant = (int64_t)(0.5 + offsets[istream] / squanta);
+        offsets[istream] = squanta * (double)nquant;
 
         if (squanta == 0) {
             // This happens if all data is zero and we are computing the quanta
@@ -235,10 +247,8 @@ int float64_to_int64(
     double * offsets,
     double * gains
 ) {
-    // FLAC uses an extra bit, so +/- 2^62 is the max range.
-    uint64_t zero = 0;
-    uint64_t all_ones = ~(zero);
-    int64_t flac_max = (int64_t)(all_ones >> 2);
+    // FLAC uses signed integers so the max positive value is 2^63 - 1.
+    int64_t flac_max = 9223372036854775807;
 
     double smin;
     double smax;
@@ -248,6 +258,7 @@ int float64_to_int64(
     double squanta;
     double min_quanta;
     double amp;
+    int64_t nquant;
     for (int64_t istream = 0; istream < n_stream; ++istream) {
         smin = input[istream * stream_size];
         smax = input[istream * stream_size];
@@ -264,7 +275,7 @@ int float64_to_int64(
         offsets[istream] = 0.5 * (smin + smax);
 
         // Check the minimum quanta size that can be used without the resulting data
-        // overflowing the 2^30 bit limit.
+        // overflowing the bit limit.
         if ((smin - offsets[istream]) > (smax - offsets[istream])) {
             amp = 1.01 * (smin - offsets[istream]);
         } else {
@@ -286,6 +297,10 @@ int float64_to_int64(
             //     return ERROR_CONVERT_TYPE;
             // }
         }
+
+        // Adjust final offset so that it is a whole number of quanta.
+        nquant = (int64_t)(0.5 + offsets[istream] / squanta);
+        offsets[istream] = squanta * (double)nquant;
 
         if (squanta == 0) {
             // This happens if all data is zero and we are computing the quanta

@@ -318,6 +318,13 @@ def write_array(
     and only wish to write it directly to HDF5.  The input array is compressed and then
     the `write_compressed()` function is called.
 
+    If the input array is int32 or int64, the compression is lossless and the compressed
+    bytes and ancillary data is written to datasets within the output group.  If the
+    array is float32 or float64, either the `quanta` or `precision` must be specified.
+    See discussion in the `FlacArray` class documentation about how the offsets and
+    gains are computed for a given quanta.  The offsets and gains are also written as
+    datasets within the output group.
+
     Args:
         arr (array):  The input numpy array.
         hgrp (h5py.Group):  The Group to use.

@@ -250,6 +250,9 @@ def float_to_int(data, quanta=None, precision=None):
     or 64bit integer values.  32bit floats are converted to 32bit integers and
     64bit floats are converted to 64bit integers.
 
+    See discussion in the `FlacArray` class documentation about how the offsets and
+    gains are computed for a given quanta.
+
     Args:
         data (array):  The floating point data.
         quanta (float):  The floating point quantity corresponding to one integer

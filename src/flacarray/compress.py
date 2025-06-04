@@ -19,7 +19,8 @@ def array_compress(arr, level=5, quanta=None, precision=None, use_threads=False)
 
     If the input array is float32 or float64, exactly one of quanta or precision
     must be specified.  Both float32 and float64 data will have floating point offset
-    and gain arrays returned.
+    and gain arrays returned.  See discussion in the `FlacArray` class documentation
+    about how the offsets and gains are computed for a given quanta.
 
     The shape of the returned auxiliary arrays (starts, nbytes, etc) will have a shape
     corresponding to the leading shape of the input array.  If the input array is a
