@@ -218,8 +218,8 @@ int float32_to_int32(
         }
 
         // Adjust final offset so that it is a whole number of quanta.
-        nquant = (int64_t)(0.5 + offsets[istream] / squanta);
-        offsets[istream] = squanta * (double)nquant;
+        nquant = (int64_t)(offsets[istream] / squanta);
+        offsets[istream] = (float)((double)squanta * (double)nquant);
 
         if (squanta == 0) {
             // This happens if all data is zero and we are computing the quanta
@@ -232,7 +232,11 @@ int float32_to_int32(
         for (int64_t isamp = 0; isamp < stream_size; ++isamp) {
             sindx = istream * stream_size + isamp;
             stemp = input[sindx] - offsets[istream];
-            output[sindx] = (int32_t)(gains[istream] * stemp + 0.5);
+            if (stemp >= 0) {
+                output[sindx] = (int32_t)(gains[istream] * stemp + 0.5);
+            } else {
+                output[sindx] = (int32_t)(gains[istream] * stemp - 0.5);
+            }
         }
     }
     return ERROR_NONE;
@@ -299,7 +303,7 @@ int float64_to_int64(
         }
 
         // Adjust final offset so that it is a whole number of quanta.
-        nquant = (int64_t)(0.5 + offsets[istream] / squanta);
+        nquant = (int64_t)(offsets[istream] / squanta);
         offsets[istream] = squanta * (double)nquant;
 
         if (squanta == 0) {
@@ -313,7 +317,11 @@ int float64_to_int64(
         for (int64_t isamp = 0; isamp < stream_size; ++isamp) {
             sindx = istream * stream_size + isamp;
             stemp = input[sindx] - offsets[istream];
-            output[sindx] = (int64_t)(gains[istream] * stemp + 0.5);
+            if (stemp >= 0) {
+                output[sindx] = (int64_t)(gains[istream] * stemp + 0.5);
+            } else {
+                output[sindx] = (int64_t)(gains[istream] * stemp - 0.5);
+            }
         }
     }
     return ERROR_NONE;
