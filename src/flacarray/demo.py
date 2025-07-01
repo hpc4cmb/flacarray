@@ -9,7 +9,7 @@ from .mpi import global_array_properties
 
 
 def create_fake_data(
-    local_shape, sigma=1.0, dtype=np.float64, seed=123456789, comm=None
+    local_shape, sigma=1.0, dtype=np.float64, seed=123456789, comm=None, dc_sigma=5,
 ):
     """Create fake random data for testing.
 
@@ -68,8 +68,11 @@ def create_fake_data(
             flat_data[1] = high
             global_data = flat_data.reshape(shape)
         else:
-            # Construct a random DC level for each stream that is +/- 5 sigma
-            dc = 5 * sigma * (rng.random(size=leading_shape_ext) - 0.5)
+            # Construct a random DC level for each stream.
+            if dc_sigma is None:
+                dc = 0
+            else:
+                dc = dc_sigma * sigma * (rng.random(size=leading_shape_ext) - 0.5)
 
             # Construct a simple low frequency waveform (assume 1Hz sampling)
             wave = np.zeros(stream_size, dtype=dtype)

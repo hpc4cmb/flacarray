@@ -12,6 +12,7 @@ from ..compress import array_compress
 from ..decompress import array_decompress
 from ..demo import create_fake_data
 from ..mpi import use_mpi, MPI
+from ..utils import float_to_int, int_to_float
 
 
 class ArrayTest(unittest.TestCase):
@@ -233,3 +234,31 @@ class ArrayTest(unittest.TestCase):
                     flush=True,
                 )
                 raise RuntimeError("Failed slice shape check")
+
+    def test_quantization(self):
+        data_shape = (1, 1000)
+        for dt, dtstr, sigma, quant in [
+            (np.dtype(np.float32), "f32", 1.0, 1.0e-3),
+            (np.dtype(np.float64), "f64", 1.0, 1.0e-3),
+        ]:
+            for dc in [0.0, -0.5, 0.5, -10.0, 10.0, -10.51, -10.4]:
+                # Run identical tests on all processes (no MPI).
+                input, _ = create_fake_data(
+                    data_shape, sigma=sigma, dtype=dt, comm=None, dc_sigma=None
+                )
+                original = input + dc
+                quantized = original // quant
+
+                data_int, data_offset, data_gain = float_to_int(quantized, quanta=quant)
+
+                output = int_to_float(data_int, data_offset, data_gain)
+
+                residual = np.absolute(output - quantized)
+                max_resid = np.amax(residual)
+                max_q_err = max_resid / quant
+                if max_q_err > 0.5:
+                    msg = f"FAIL: Quantization of {dtstr} with quant={quant}, "
+                    msg += f"offset={dc} has max error of {max_q_err} "
+                    msg += f"quanta ({max_resid})"
+                    print(msg, flush=True)
+                    self.assertTrue(False)

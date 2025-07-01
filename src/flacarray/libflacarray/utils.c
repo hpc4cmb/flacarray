@@ -218,7 +218,7 @@ int float32_to_int32(
         }
 
         // Adjust final offset so that it is a whole number of quanta.
-        nquant = (int64_t)(offsets[istream] / squanta);
+        nquant = (int64_t)((double)offsets[istream] / (double)squanta);
         offsets[istream] = (float)((double)squanta * (double)nquant);
 
         if (squanta == 0) {
