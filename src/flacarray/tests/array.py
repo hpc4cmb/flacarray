@@ -217,11 +217,7 @@ class ArrayTest(unittest.TestCase):
         farray = FlacArray.from_array(data_i32)
 
         # Try some slices and verify expected result shape.
-        for dslc in [
-            (slice(0)),
-            (slice(1, 3)),
-            (100,)
-        ]:
+        for dslc in [(slice(0)), (slice(1, 3)), (100,)]:
             # Slice of the original numpy array
             check = data_i32[dslc]
             # Slice of the FlacArray
@@ -247,18 +243,41 @@ class ArrayTest(unittest.TestCase):
                     data_shape, sigma=sigma, dtype=dt, comm=None, dc_sigma=None
                 )
                 original = input + dc
-                quantized = original // quant
+
+                # First test that roundtrip conversion of this random data to integer
+                # and back results in errors that are less than half the quantization
+                # value.
+
+                data_int, data_offset, data_gain = float_to_int(original, quanta=quant)
+                output = int_to_float(data_int, data_offset, data_gain)
+                residual = np.absolute(output - original)
+                max_resid = np.amax(residual)
+                if max_resid > 0.5 * quant:
+                    msg = f"FAIL: Quantization of {dtstr} with quant={quant}, "
+                    msg += f"offset={dc} has max absolute error of {max_resid} "
+                    msg += f"which is larger than 0.5 * quant ({0.5 * quant})"
+                    print(msg, flush=True)
+                    self.assertTrue(False)
+
+                # Next, pre-truncate the input random floating point data to the nearest
+                # quanta value.  The resulting quantized data should compress losslessly
+                # up to the machine precision of the dtype we are using across the
+                # dynamic range of the data.
+                mach_prec = np.finfo(dt).eps
+
+                quantized = np.array(original / quant, dtype=np.int64).astype(dt)
+                quantized *= quant
+                quantized_range = 2 * np.amax(np.absolute(quantized))
+                q_err = quantized_range * mach_prec
 
                 data_int, data_offset, data_gain = float_to_int(quantized, quanta=quant)
-
                 output = int_to_float(data_int, data_offset, data_gain)
-
                 residual = np.absolute(output - quantized)
                 max_resid = np.amax(residual)
-                max_q_err = max_resid / quant
-                if max_q_err > 0.5:
-                    msg = f"FAIL: Quantization of {dtstr} with quant={quant}, "
-                    msg += f"offset={dc} has max error of {max_q_err} "
-                    msg += f"quanta ({max_resid})"
+                if max_resid > q_err:
+                    msg = f"FAIL: Quantization of pre-truncated {dtstr} with "
+                    msg += f"quant={quant}, offset={dc} has max absolute error of"
+                    msg += f" {max_resid} which is larger than expected for dtype"
+                    msg += f" and data range ({q_err})"
                     print(msg, flush=True)
                     self.assertTrue(False)

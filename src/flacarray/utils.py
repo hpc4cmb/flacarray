@@ -284,11 +284,16 @@ def float_to_int(data, quanta=None, precision=None):
         rms = np.std(data, axis=-1, keepdims=True)
         try:
             lprec = len(precision)
-            # This worked, it is an array
-            quanta = rms / 10 ** precision.reshape(leading_shape + (1,))
+            # This worked, it is an array.  Check shape
+            if precision.shape != leading_shape:
+                msg = f"precision array ({precision}) has shape that does not "
+                msg += f"match leading shape of data ({precision.shape} != "
+                msg += f"{leading_shape})"
+                raise RuntimeError(msg)
+            quanta = rms.reshape(leading_shape) / 10 ** precision.reshape(leading_shape)
         except TypeError:
             # Precision is a scalar
-            quanta = rms / 10**precision
+            quanta = rms.reshape(leading_shape) / 10**precision
 
     if quanta is None:
         # Indicate this by passing a fake value
@@ -297,7 +302,12 @@ def float_to_int(data, quanta=None, precision=None):
         # Make sure it is an array
         try:
             lquant = len(quanta)
-            # Worked...
+            # Worked. Check shape
+            if quanta.shape != leading_shape:
+                msg = f"quanta array ({quanta}) has shape that does not "
+                msg += f"match leading shape of data ({quanta.shape} != "
+                msg += f"{leading_shape})"
+                raise RuntimeError(msg)
         except TypeError:
             quanta = quanta * np.ones(leading_shape, dtype=data.dtype)
 
