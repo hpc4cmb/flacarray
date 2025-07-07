@@ -93,7 +93,18 @@ jobs:
             && conda activate test \
             && pip install .
 
-      - name: Run Serial Tests
+      - name: Serial Tests (MPI Disabled)
+        run: |
+          source ~/conda/etc/profile.d/conda.sh \
+            && conda activate test \
+            && export OMP_NUM_THREADS=2 \
+            && export MPI_DISABLE=1 \
+            && mkdir -p test \
+            && pushd test >/dev/null 2>&1 \
+            && python3 -c 'import flacarray.tests; flacarray.tests.run()' \
+            && popd >/dev/null 2>&1
+
+      - name: Serial Tests
         run: |
           source ~/conda/etc/profile.d/conda.sh \
             && conda activate test \
@@ -103,7 +114,7 @@ jobs:
             && python3 -c 'import flacarray.tests; flacarray.tests.run()' \
             && popd >/dev/null 2>&1
 
-      - name: Run MPI Tests
+      - name: MPI Tests
         run: |
           source ~/conda/etc/profile.d/conda.sh \
             && conda activate test \

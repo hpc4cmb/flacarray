@@ -11,7 +11,7 @@ from .decompress import array_decompress_slice
 from .hdf5 import write_compressed as hdf5_write_compressed
 from .hdf5 import read_compressed as hdf5_read_compressed
 from .mpi import global_bytes, global_array_properties
-from .utils import log
+from .utils import log, compressed_dtype
 from .zarr import write_compressed as zarr_write_compressed
 from .zarr import read_compressed as zarr_read_compressed
 
@@ -29,33 +29,44 @@ class FlacArray:
     stream in the overall bytes array.  The shape of the starting array corresponds
     to the shape of the leading, un-compressed dimensions of the original array.
 
-    The input data is converted to 32bit integers.  The "quanta" value is used
-    for floating point data conversion and represents the floating point increment
-    for a single integer value.  If quanta is None, each stream is scaled independently
-    based on its data range.  If quanta is a scalar, all streams are scaled with the
-    same value.  If quanta is an array, it specifies the scaling independently for each
-    stream.
+    If the input data is 32bit or 64bit integers, each stream in the array is
+    compressed directly with FLAC.
 
-    Alternatively, if "precision" is provided, each data vector is scaled to retain
-    the prescribed number of significant digits when converting to integers.
+    If the input data is 32bit or 64bit floating point numbers, then you **must**
+    specify exactly one of either quanta or precision when calling `from_array()`.  For
+    floating point data, the mean of each stream is computed and rounded to the nearest
+    whole quanta.  This "offset" per stream is recorded and subtracted from the
+    stream.  The offset-subtracted stream data is then rescaled and truncated to
+    integers (int32 or int64 depending on the bit width of the input array).  If
+    `quanta` is specified, the data is rescaled by 1 / quanta.  The quanta may either
+    be a scalar applied to all streams, or an array of values, one per stream.  If
+    instead the precision (integer number of decimal places) is specified, this is
+    converted to a quanta by dividing the stream RMS by `10^{precision}`.  Similar to
+    quanta, the precision may be specified as a single value for all streams, or as an
+    array of values, one per stream.
 
-    The following rules specify the data conversion that is performed depending on
+    If you choose a quanta value that is close to machine epsilon (e.g. 1e-7 for 32bit
+    or 1e-16 for 64bit), then the compression amount will be negligible but the results
+    nearly lossless. Compression of floating point data should not be done blindly and
+    you should consider the underlying precision of the data you are working with in
+    order to achieve the best compression possible.
+
+    The following rules summarize the data conversion that is performed depending on
     the input type:
 
-    * int32:  No conversion.
+    * int32:  No conversion.  Compressed to single channel FLAC bytestream.
 
-    * int64:  Subtract the integer closest to the mean, then truncate to lower
-        32 bits, and check that the higher bits were zero.
+    * int64:  No conversion.  Compressed to 2-channel (stereo) FLAC bytestream.
 
-    * float32:  Subtract the mean and scale data based on the quanta value (see
-        above).  Then round to nearest 32bit integer.
+    * float32:  Subtract the offset per stream and scale data based on the quanta value
+        or precision (see above).  Then round to nearest 32bit integer.
 
-    * float64:  Subtract the mean and scale data based on the quanta value (see
-        above).  Then round to nearest 32bit integer.
+    * float64:  Subtract the offset per stream and scale data based on the quanta value
+        or precision (see above).  Then round to nearest 64bit integer.
 
-    After conversion to 32bit integers, each stream's data is separately compressed
-    into a sequence of FLAC bytes, which is appended to the bytestream.  The offset in
-    bytes for each stream is recorded.
+    After conversion to integers, each stream's data is separately compressed into a
+    sequence of FLAC bytes, which is appended to the bytestream.  The offset in bytes
+    for each stream is recorded.
 
     A FlacArray is only constructed directly when making a copy.  Use the class methods
     to create FlacArrays from numpy arrays or on-disk representations.
@@ -109,22 +120,34 @@ class FlacArray:
         self._init_params()
 
     def _init_params(self):
+        # The input `_shape` parameter is the original shape when the instance
+        # was created from an array or read from disk.  In the case of a single
+        # stream, this tracks the user intentions about whether to flatten the
+        # leading dimension.  We also track the "local shape", with is the same,
+        # but which always keeps the leading dimension.
+        if len(self._shape) == 1:
+            self._flatten_single = True
+            self._local_shape = (1, self._shape[0])
+        else:
+            self._flatten_single = False
+            self._local_shape = self._shape
+
         self._local_nbytes = self._compressed.nbytes
         (
             self._global_nbytes,
             self._global_proc_nbytes,
             self._global_stream_starts,
         ) = global_bytes(self._local_nbytes, self._stream_starts, self._mpi_comm)
-        self._stream_size = self._shape[-1]
-        self._leading_shape = self._stream_starts.shape
-        self._local_nstreams = np.prod(self._leading_shape)
-        if len(self._global_shape) == 1:
-            self._global_leading_shape = (1,)
-        else:
-            self._global_leading_shape = self._global_shape[:-1]
-        self._global_nstreams = np.prod(self._global_leading_shape)
+        self._leading_shape = self._local_shape[:-1]
+        self._global_leading_shape = self._global_shape[:-1]
+        self._stream_size = self._local_shape[-1]
+
         # For reference, record the type string of the original data.
         self._typestr = self._dtype_str(self._dtype)
+        # Track whether we have 32bit or 64bit data
+        self._is_int64 = self._dtype == np.dtype(np.int64) or self._dtype == np.dtype(
+            np.float64
+        )
 
     @staticmethod
     def _dtype_str(dt):
@@ -166,7 +189,7 @@ class FlacArray:
     @property
     def stream_size(self):
         """The uncompressed length of each stream."""
-        return self._shape[-1]
+        return self._stream_size
 
     # Properties of the compressed data
 
@@ -245,92 +268,172 @@ class FlacArray:
         """The dtype of the uncompressed array."""
         return self._dtype
 
-    def _keep_view(self, key):
-        if len(key) != len(self._leading_shape):
-            raise ValueError("view size does not match leading dimensions")
-        view = np.zeros(self._leading_shape, dtype=bool)
-        view[key] = True
-        return view
+    @property
+    def typestr(self):
+        """A string representation of the original data type."""
+        return self._typestr
+
+    # __getitem__ slicing / decompression on the fly and associated
+    # helper functions.
 
     def _slice_nelem(self, slc, dim):
+        """Get the number of elements in a slice."""
         start, stop, step = slc.indices(dim)
         nslc = (stop - start) // step
         if nslc < 0:
             nslc = 0
         return nslc
 
-    def __getitem__(self, raw_key):
-        """Decompress a slice of data on the fly."""
-        first = None
-        last = None
-        keep = None
-        ndim = len(self._shape)
-        output_shape = list()
-        sample_shape = (self._shape[-1],)
-        if isinstance(raw_key, tuple):
-            key = raw_key
-        else:
-            key = (raw_key,)
-        keep_slice = list()
-        for axis, axkey in enumerate(key):
-            if axis < ndim - 1:
-                # One of the leading dimensions
-                keep_slice.append(axkey)
-                if not isinstance(axkey, (int, np.integer)):
-                    # Some kind of slice, do not compress this dimension.  Compute
-                    # the number of elements in the output shape.
-                    nslc = self._slice_nelem(axkey, self._shape[axis])
-                    output_shape.append(nslc)
+    def _keep_view(self, key):
+        """Convert leading-shape key to bool array."""
+        if len(key) != len(self._leading_shape):
+            msg = f"keep_view {key} does not match leading "
+            msg += f"dimensions {len(self._leading_shape)}"
+            raise ValueError(msg)
+        view = np.zeros(self._leading_shape, dtype=bool)
+        view[key] = True
+        return view
+
+    def _get_full_key(self, key):
+        """Process the incoming key so that it covers all dimensions.
+
+        Args:
+            key (tuple):  The input key consisting of an integer or a tuple
+                of slices and / or integers.
+
+        Result:
+            (tuple):  The full key.
+
+        """
+        ndim = len(self._local_shape)
+        full_key = list()
+        if self._flatten_single:
+            # Our array is a single stream with flattened shape.  The user
+            # supplied key should only contain the sample axis.
+            if isinstance(key, tuple):
+                # It better have length == 1...
+                if len(key) != 1:
+                    msg = f"Slice key {key} is not valid for single, "
+                    msg += "flattened stream."
+                    raise ValueError(msg)
+                full_key = [0, key[0]]
             else:
-                # This is the sample axis.  Special handling to ensure that the
-                # selected samples are contiguous.
-                if isinstance(axkey, slice):
-                    # A slice
-                    if (axkey.step is not None and axkey.step != 1):
-                        msg = "Only stride==1 supported on stream slices"
-                        raise ValueError(msg)
-                    if (
-                        axkey.start is not None
-                        and axkey.stop is not None
-                        and axkey.stop < axkey.start
-                    ):
-                        msg = "Only increasing slices supported on streams"
-                        raise ValueError(msg)
-                    first = axkey.start
-                    last = axkey.stop
-                    if first is None or first < 0:
-                        first = 0
-                    if first > self._shape[-1] - 1:
-                        first = self._shape[-1] - 1
-                    if last is None or last > self._shape[-1]:
-                        last = self._shape[-1]
-                    if last < 1:
-                        last = 1
-                    sample_shape = (last - first,)
-                elif isinstance(axkey, (int, np.integer)):
-                    # Just a scalar
-                    first = axkey
-                    last = axkey + 1
-                    sample_shape = ()
+                # Single element, compress sample dimension
+                full_key = [0, key]
+        else:
+            if isinstance(key, tuple):
+                for axis, axkey in enumerate(key):
+                    full_key.append(axkey)
+            else:
+                full_key.append(key)
+
+        if len(full_key) > ndim:
+            msg = f"Invalid slice key {key}, too many dimensions"
+            raise ValueError(msg)
+
+        # Fill in remaining dimensions
+        filled = len(full_key)
+        full_key.extend([slice(None) for x in range(len(self._local_shape) - filled)])
+        return full_key
+
+    def _get_leading_axes(self, full_key):
+        """Process the leading axes.
+
+        Args:
+            full_key (tuple):  The full-rank selection key.
+
+        Returns:
+            (tuple):  The (leading_shape, keep array).
+
+        """
+        leading_shape = list()
+        keep_slice = list()
+
+        if self._flatten_single:
+            # Our array is a single stream with flattened shape.
+            keep_slice = [0,]
+        else:
+            for axis, axkey in enumerate(full_key[:-1]):
+                if not isinstance(axkey, (int, np.integer)):
+                    # Some kind of slice, do not compress this dimension.
+                    nslc = self._slice_nelem(axkey, self._local_shape[axis])
+                    leading_shape.append(nslc)
                 else:
-                    raise ValueError(
-                        "Only contiguous slices supported on the stream dimension"
-                    )
-        keep_slice.extend(
-            [slice(None) for x in range(len(self._leading_shape) - len(key))]
-        )
-        output_shape.extend(
-            [x for x in self._leading_shape[len(key):]]
-        )
-        keep = self._keep_view(tuple(keep_slice))
-        output_shape = tuple(output_shape)
-        full_shape = output_shape + sample_shape
-        n_total = np.prod(full_shape)
+                    # Check for validity
+                    if axkey < 0 or axkey >= self._local_shape[axis]:
+                        # Insert a zero-length dimension so that a zero-length
+                        # array is returned in the calling code.
+                        leading_shape.append(0)
+                    else:
+                        # This dimension is a single element and will be
+                        # compressed.
+                        pass
+                keep_slice.append(axkey)
+        leading_shape = tuple(leading_shape)
+        keep_slice = tuple(keep_slice)
+        if len(keep_slice) == 0:
+            keep = None
+        else:
+            keep = self._keep_view(keep_slice)
+        return leading_shape, keep
+
+    def _get_sample_axis(self, full_key):
+        """Process any slicing of the stream axis.
+
+        Args:
+            full_key (tuple):  The full-rank selection key.
+
+        Returns:
+            (tuple):  The (first, last, sample_shape).
+
+        """
+        sample_key = full_key[-1]
+        if sample_key is None:
+            return (0, self._stream_size, (self._stream_size,))
+        if isinstance(sample_key, slice):
+            start, stop, step = sample_key.indices(self._stream_size)
+            if step != 1:
+                msg = "Only stride==1 supported on stream slices"
+                raise ValueError(msg)
+            if stop - start <= 0:
+                # No samples
+                return (0, 0, (0,))
+            return (start, stop, (stop-start,))
+        elif isinstance(sample_key, (int, np.integer)):
+            # Just a scalar
+            return (sample_key, sample_key + 1, ())
+        else:
+            msg = "Stream dimension supports contiguous slices or single indices."
+            raise ValueError(msg)
+
+    def __getitem__(self, raw_key):
+        """Decompress a slice of data on the fly.
+
+        Args:
+            raw_key (tuple):  A tuple of slices or integers.
+
+        Returns:
+            (array):  The decompressed array slice.
+
+        """
+        # Get the key for all dimensions
+        key = self._get_full_key(raw_key)
+
+        # Compute the output leading shape and keep array
+        leading_shape, keep = self._get_leading_axes(key)
+
+        # Compute sample axis slice
+        first, last, sample_shape = self._get_sample_axis(key)
+
+        full_shape = leading_shape + sample_shape
+        if len(full_shape) == 0:
+            n_total = 0
+        else:
+            n_total = np.prod(full_shape)
         if n_total == 0:
             # At least one dimension was zero, return empty array
             return np.zeros(full_shape, dtype=self._dtype)
         else:
-            # We have some samples
             arr, strm_indices = array_decompress_slice(
                 self._compressed,
                 self._stream_size,
@@ -341,6 +444,7 @@ class FlacArray:
                 keep=keep,
                 first_stream_sample=first,
                 last_stream_sample=last,
+                is_int64=self._is_int64,
             )
             return arr.reshape(full_shape)
 
@@ -365,6 +469,9 @@ class FlacArray:
     def __eq__(self, other):
         if self._shape != other._shape:
             log.debug(f"other shape {other._shape} != {self._shape}")
+            return False
+        if self._dtype != other._dtype:
+            log.debug(f"other dtype {other._dtype} != {self._dtype}")
             return False
         if self._global_shape != other._global_shape:
             msg = f"other global_shape {other._global_shape} != {self._global_shape}"
@@ -409,7 +516,11 @@ class FlacArray:
         return True
 
     def to_array(
-        self, keep=None, stream_slice=None, keep_indices=False, use_threads=False
+        self,
+        keep=None,
+        stream_slice=None,
+        keep_indices=False,
+        use_threads=False,
     ):
         """Decompress local data into a numpy array.
 
@@ -463,7 +574,9 @@ class FlacArray:
             keep=keep,
             first_stream_sample=first_samp,
             last_stream_sample=last_samp,
+            is_int64=self._is_int64,
             use_threads=use_threads,
+            no_flatten=(not self._flatten_single),
         )
         if keep is not None and keep_indices:
             return (arr, indices)
@@ -514,6 +627,7 @@ class FlacArray:
             shape=arr.shape,
             global_shape=global_shape,
             compressed=compressed,
+            dtype=arr.dtype,
             stream_starts=starts,
             stream_nbytes=nbytes,
             stream_offsets=offsets,
@@ -542,6 +656,11 @@ class FlacArray:
             None
 
         """
+        if self._is_int64:
+            n_channels = 2
+        else:
+            n_channels = 1
+
         hdf5_write_compressed(
             hgrp,
             self._leading_shape,
@@ -553,6 +672,7 @@ class FlacArray:
             self._stream_offsets,
             self._stream_gains,
             self._compressed,
+            n_channels,
             self._compressed.nbytes,
             self._global_nbytes,
             self._global_proc_nbytes,
@@ -567,6 +687,7 @@ class FlacArray:
         keep=None,
         mpi_comm=None,
         mpi_dist=None,
+        no_flatten=False,
     ):
         """Construct a FlacArray from an HDF5 Group.
 
@@ -595,6 +716,8 @@ class FlacArray:
                 distribute the leading dimension.
             mpi_dist (array):  If specified, assign blocks of these sizes to processes
                 when distributing the leading dimension.
+            no_flatten (bool):  If True, for single-stream arrays, leave the leading
+                dimension of (1,) in the result.
 
         Returns:
             (FlacArray):  A newly constructed FlacArray.
@@ -604,6 +727,7 @@ class FlacArray:
             local_shape,
             global_shape,
             compressed,
+            n_channels,
             stream_starts,
             stream_nbytes,
             stream_offsets,
@@ -617,11 +741,20 @@ class FlacArray:
             mpi_dist=mpi_dist,
         )
 
+        dt = compressed_dtype(n_channels, stream_offsets, stream_gains)
+
+        if (len(local_shape) == 2 and local_shape[0] == 1) and not no_flatten:
+            # Flatten
+            shape = (local_shape[1],)
+        else:
+            shape = local_shape
+
         return FlacArray(
             None,
-            shape=local_shape,
+            shape=shape,
             global_shape=global_shape,
             compressed=compressed,
+            dtype=dt,
             stream_starts=stream_starts,
             stream_nbytes=stream_nbytes,
             stream_offsets=stream_offsets,
@@ -646,6 +779,10 @@ class FlacArray:
             None
 
         """
+        if self._is_int64:
+            n_channels = 2
+        else:
+            n_channels = 1
         zarr_write_compressed(
             zgrp,
             self._leading_shape,
@@ -657,6 +794,7 @@ class FlacArray:
             self._stream_offsets,
             self._stream_gains,
             self._compressed,
+            n_channels,
             self._compressed.nbytes,
             self._global_nbytes,
             self._global_proc_nbytes,
@@ -671,6 +809,7 @@ class FlacArray:
         keep=None,
         mpi_comm=None,
         mpi_dist=None,
+        no_flatten=False,
     ):
         """Construct a FlacArray from a Zarr Group.
 
@@ -697,6 +836,8 @@ class FlacArray:
                 distribute the leading dimension.
             mpi_dist (array):  If specified, assign blocks of these sizes to processes
                 when distributing the leading dimension.
+            no_flatten (bool):  If True, for single-stream arrays, leave the leading
+                dimension of (1,) in the result.
 
         Returns:
             (FlacArray):  A newly constructed FlacArray.
@@ -706,6 +847,7 @@ class FlacArray:
             local_shape,
             global_shape,
             compressed,
+            n_channels,
             stream_starts,
             stream_nbytes,
             stream_offsets,
@@ -719,11 +861,20 @@ class FlacArray:
             mpi_dist=mpi_dist,
         )
 
+        dt = compressed_dtype(n_channels, stream_offsets, stream_gains)
+
+        if (len(local_shape) == 2 and local_shape[0] == 1) and not no_flatten:
+            # Flatten
+            shape = (local_shape[1],)
+        else:
+            shape = local_shape
+
         return FlacArray(
             None,
-            shape=local_shape,
+            shape=shape,
             global_shape=global_shape,
             compressed=compressed,
+            dtype=dt,
             stream_starts=stream_starts,
             stream_nbytes=stream_nbytes,
             stream_offsets=stream_offsets,

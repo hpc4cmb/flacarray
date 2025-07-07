@@ -35,28 +35,6 @@ class HDF5Test(unittest.TestCase):
         else:
             rank = self.comm.rank
 
-        data_shape = (4, 3, 1000)
-        flatsize = np.prod(data_shape)
-        rng = np.random.default_rng()
-
-        input32 = rng.integers(
-            low=-(2**29), high=2**29, size=flatsize, dtype=np.int32
-        ).reshape(data_shape)
-        check_i32 = None
-
-        input64 = (
-            rng.integers(low=-(2**27), high=2**30, size=flatsize, dtype=np.int32)
-            .reshape(data_shape)
-            .astype(np.int64)
-        )
-        check_i64 = None
-
-        inputf32 = create_fake_data(data_shape, 1.0).astype(np.float32)
-        check_f32 = None
-
-        inputf64 = create_fake_data(data_shape, 1.0)
-        check_f64 = None
-
         tmpdir = None
         tmppath = None
         if rank == 0:
@@ -65,130 +43,59 @@ class HDF5Test(unittest.TestCase):
         if self.comm is not None:
             tmppath = self.comm.bcast(tmppath, root=0)
 
-        i32_file = os.path.join(tmppath, "data_i32.h5")
-        with H5File(i32_file, "w", comm=self.comm) as hf:
-            write_array(
-                input32,
-                hf.handle,
-                level=5,
-                quanta=None,
-                precision=None,
-                mpi_comm=self.comm,
-                use_threads=True,
-            )
+        for local_shape in [(4, 3, 1000), (10000,)]:
+            shpstr = "x".join([f"{int(x)}" for x in local_shape])
+            for dt, dtstr, sigma, quant in [
+                (np.dtype(np.int32), "i32", None, None),
+                (np.dtype(np.int64), "i64", None, None),
+                (np.dtype(np.float32), "f32", 1.0, 1.0e-7),
+                (np.dtype(np.float64), "f64", 1.0, 1.0e-15),
+            ]:
+                input, mpi_dist = create_fake_data(
+                    local_shape, sigma=sigma, dtype=dt, comm=self.comm
+                )
+                check = None
+                filename = os.path.join(tmppath, f"data_{dtstr}_{shpstr}.h5")
+                with H5File(filename, "w", comm=self.comm) as hf:
+                    write_array(
+                        input,
+                        hf.handle,
+                        level=5,
+                        quanta=quant,
+                        precision=None,
+                        mpi_comm=self.comm,
+                        use_threads=True,
+                    )
+                if self.comm is not None:
+                    self.comm.barrier()
+                with H5File(filename, "r", comm=self.comm) as hf:
+                    check = read_array(
+                        hf.handle,
+                        keep=None,
+                        stream_slice=None,
+                        keep_indices=False,
+                        mpi_comm=self.comm,
+                        mpi_dist=mpi_dist,
+                        use_threads=True,
+                    )
+                if dtstr == "i32" or dtstr == "i64":
+                    local_fail = not np.array_equal(check, input)
+                else:
+                    local_fail = not np.allclose(check, input, atol=1e-6)
+                if self.comm is not None:
+                    fail = self.comm.allreduce(local_fail, op=MPI.SUM)
+                else:
+                    fail = local_fail
+                if fail:
+                    print(f"check_{dtstr}_{shpstr}[{rank}] = {check}", flush=True)
+                    print(f"input_{dtstr}_{shpstr}[{rank}] = {input}", flush=True)
+                    print(f"FAIL on {dtstr} roundtrip to hdf5", flush=True)
+                    self.assertTrue(False)
         if self.comm is not None:
             self.comm.barrier()
-        with H5File(i32_file, "r", comm=self.comm) as hf:
-            check_i32 = read_array(
-                hf.handle,
-                keep=None,
-                stream_slice=None,
-                keep_indices=False,
-                mpi_comm=self.comm,
-                mpi_dist=None,
-                use_threads=True,
-            )
-
-        i64_file = os.path.join(tmppath, "data_i64.h5")
-        with H5File(i64_file, "w", comm=self.comm) as hf:
-            write_array(
-                input64,
-                hf.handle,
-                level=5,
-                quanta=None,
-                precision=None,
-                mpi_comm=self.comm,
-                use_threads=True,
-            )
-        if self.comm is not None:
-            self.comm.barrier()
-        with H5File(i64_file, "r", comm=self.comm) as hf:
-            check_i64 = read_array(
-                hf.handle,
-                keep=None,
-                stream_slice=None,
-                keep_indices=False,
-                mpi_comm=self.comm,
-                mpi_dist=None,
-                use_threads=True,
-            )
-
-        f32_file = os.path.join(tmppath, "data_f32.h5")
-        with H5File(f32_file, "w", comm=self.comm) as hf:
-            write_array(
-                inputf32,
-                hf.handle,
-                level=5,
-                quanta=None,
-                precision=None,
-                mpi_comm=self.comm,
-                use_threads=True,
-            )
-        if self.comm is not None:
-            self.comm.barrier()
-        with H5File(f32_file, "r", comm=self.comm) as hf:
-            check_f32 = read_array(
-                hf.handle,
-                keep=None,
-                stream_slice=None,
-                keep_indices=False,
-                mpi_comm=self.comm,
-                mpi_dist=None,
-                use_threads=True,
-            )
-
-        f64_file = os.path.join(tmppath, "data_f64.h5")
-        with H5File(f64_file, "w", comm=self.comm) as hf:
-            write_array(
-                inputf64,
-                hf.handle,
-                level=5,
-                quanta=None,
-                precision=None,
-                mpi_comm=self.comm,
-                use_threads=True,
-            )
-        if self.comm is not None:
-            self.comm.barrier()
-        with H5File(f64_file, "r", comm=self.comm) as hf:
-            check_f64 = read_array(
-                hf.handle,
-                keep=None,
-                stream_slice=None,
-                keep_indices=False,
-                mpi_comm=self.comm,
-                mpi_dist=None,
-                use_threads=True,
-            )
-
-        if self.comm is not None:
-            self.comm.barrier()
-        del tmppath
-        del tmpdir
-
-        if not np.array_equal(check_i32, input32):
-            print(f"check_i32 = {check_i32}", flush=True)
-            print(f"input_i32 = {input32}", flush=True)
-            print("FAIL on i32 roundtrip to hdf5", flush=True)
-            self.assertTrue(False)
-
-        if not np.array_equal(check_i64, input64):
-            print(f"check_i64 = {check_i64}", flush=True)
-            print(f"input_i64 = {input64}", flush=True)
-            print("FAIL on i64 roundtrip to hdf5", flush=True)
-            self.assertTrue(False)
-
-        if not np.allclose(check_f32, inputf32, atol=1e-6):
-            print(f"check_f32 = {check_f32}", flush=True)
-            print(f"input_f32 = {inputf32}", flush=True)
-            print("FAIL on f32 roundtrip to hdf5", flush=True)
-            self.assertTrue(False)
-
-        if not np.allclose(check_f64, inputf64, atol=1e-6):
-            print(f"check_f64 = {check_f64}", flush=True)
-            print(f"input_f64 = {inputf64}", flush=True)
-            print("FAIL on f64 roundtrip to hdf5", flush=True)
-            self.assertTrue(False)
+        if tmpdir is not None:
+            tmpdir.cleanup()
+            del tmpdir
 
     def test_array_write_read(self):
         if not have_hdf5:
@@ -199,36 +106,6 @@ class HDF5Test(unittest.TestCase):
         else:
             rank = self.comm.rank
 
-        data_shape = (4, 3, 1000)
-        flatsize = np.prod(data_shape)
-        rng = np.random.default_rng()
-
-        input32 = rng.integers(
-            low=-(2**29), high=2**29, size=flatsize, dtype=np.int32
-        ).reshape(data_shape)
-        flcarr_i32 = FlacArray.from_array(input32, mpi_comm=self.comm, use_threads=True)
-        check_i32 = None
-
-        input64 = (
-            rng.integers(low=-(2**27), high=2**30, size=flatsize, dtype=np.int32)
-            .reshape(data_shape)
-            .astype(np.int64)
-        )
-        flcarr_i64 = FlacArray.from_array(input64, mpi_comm=self.comm, use_threads=True)
-        check_i64 = None
-
-        inputf32 = create_fake_data(data_shape, 1.0).astype(np.float32)
-        flcarr_f32 = FlacArray.from_array(
-            inputf32, mpi_comm=self.comm, use_threads=True
-        )
-        check_f32 = None
-
-        inputf64 = create_fake_data(data_shape, 1.0)
-        flcarr_f64 = FlacArray.from_array(
-            inputf64, mpi_comm=self.comm, use_threads=True
-        )
-        check_f64 = None
-
         tmpdir = None
         tmppath = None
         if rank == 0:
@@ -237,79 +114,60 @@ class HDF5Test(unittest.TestCase):
         if self.comm is not None:
             tmppath = self.comm.bcast(tmppath, root=0)
 
-        i32_file = os.path.join(tmppath, "data_i32.h5")
-        with H5File(i32_file, "w", comm=self.comm) as hf:
-            flcarr_i32.write_hdf5(hf.handle)
+        for local_shape in [(4, 3, 1000), (10000,)]:
+            shpstr = "x".join([f"{int(x)}" for x in local_shape])
+            for dt, dtstr, sigma, quant in [
+                (np.dtype(np.int32), "i32", None, None),
+                (np.dtype(np.int64), "i64", None, None),
+                (np.dtype(np.float32), "f32", 1.0, 1.0e-7),
+                (np.dtype(np.float64), "f64", 1.0, 1.0e-15),
+            ]:
+                input, mpi_dist = create_fake_data(
+                    local_shape, sigma=sigma, dtype=dt, comm=self.comm
+                )
+                flcarr = FlacArray.from_array(
+                    input, quanta=quant, mpi_comm=self.comm, use_threads=True
+                )
+
+                filename = os.path.join(tmppath, f"data_{dtstr}_{shpstr}.h5")
+                with H5File(filename, "w", comm=self.comm) as hf:
+                    flcarr.write_hdf5(hf.handle)
+                if self.comm is not None:
+                    self.comm.barrier()
+                with H5File(filename, "r", comm=self.comm) as hf:
+                    check = FlacArray.read_hdf5(
+                        hf.handle, mpi_comm=self.comm, mpi_dist=mpi_dist
+                    )
+
+                local_fail = check != flcarr
+                if self.comm is not None:
+                    fail = self.comm.allreduce(local_fail, op=MPI.SUM)
+                else:
+                    fail = local_fail
+
+                if fail:
+                    print(f"check_{dtstr}_{shpstr}[{rank}] = {check}", flush=True)
+                    print(f"flcarr_{dtstr}_{shpstr}[{rank}] = {flcarr}", flush=True)
+                    print(f"FAIL on {dtstr} FlacArray roundtrip to hdf5", flush=True)
+                    self.assertTrue(False)
+                else:
+                    output = check.to_array(use_threads=True)
+                    if dtstr == "i32" or dtstr == "i64":
+                        local_arr_fail = not np.array_equal(output, input)
+                    else:
+                        local_arr_fail = not np.allclose(output, input, atol=1e-6)
+                    if self.comm is not None:
+                        arr_fail = self.comm.allreduce(local_arr_fail, op=MPI.SUM)
+                    else:
+                        arr_fail = local_arr_fail
+                    if arr_fail:
+                        print(f"output_{dtstr}_{shpstr}[{rank}] = {output}", flush=True)
+                        print(f"input_{dtstr}_{shpstr}[{rank}] = {input}", flush=True)
+                        print(f"FAIL on {dtstr} array roundtrip to hdf5", flush=True)
+                        self.assertTrue(False)
+
         if self.comm is not None:
             self.comm.barrier()
-        with H5File(i32_file, "r", comm=self.comm) as hf:
-            check_i32 = FlacArray.read_hdf5(hf.handle, mpi_comm=self.comm)
-
-        i64_file = os.path.join(tmppath, "data_i64.h5")
-        with H5File(i64_file, "w", comm=self.comm) as hf:
-            flcarr_i64.write_hdf5(hf.handle)
-        if self.comm is not None:
-            self.comm.barrier()
-        with H5File(i64_file, "r", comm=self.comm) as hf:
-            check_i64 = FlacArray.read_hdf5(hf.handle, mpi_comm=self.comm)
-
-        f32_file = os.path.join(tmppath, "data_f32.h5")
-        with H5File(f32_file, "w", comm=self.comm) as hf:
-            flcarr_f32.write_hdf5(hf.handle)
-        if self.comm is not None:
-            self.comm.barrier()
-        with H5File(f32_file, "r", comm=self.comm) as hf:
-            check_f32 = FlacArray.read_hdf5(hf.handle, mpi_comm=self.comm)
-
-        f64_file = os.path.join(tmppath, "data_f64.h5")
-        with H5File(f64_file, "w", comm=self.comm) as hf:
-            flcarr_f64.write_hdf5(hf.handle)
-        if self.comm is not None:
-            self.comm.barrier()
-        with H5File(f64_file, "r", comm=self.comm) as hf:
-            check_f64 = FlacArray.read_hdf5(hf.handle, mpi_comm=self.comm)
-
-        if self.comm is not None:
-            self.comm.barrier()
-        del tmppath
-        del tmpdir
-
-        if check_i32 != flcarr_i32:
-            print(f"check_i32 = {check_i32}", flush=True)
-            print(f"flcarr_i32 = {flcarr_i32}", flush=True)
-            print("FAIL on i32 roundtrip to hdf5", flush=True)
-            self.assertTrue(False)
-        else:
-            output_i32 = check_i32.to_array(use_threads=True)
-            if not np.array_equal(output_i32, input32):
-                print("FAIL on i32 hdf5 decompressed array check", flush=True)
-                self.assertTrue(False)
-
-        if check_i64 != flcarr_i64:
-            print(f"check_i64 = {check_i64}", flush=True)
-            print(f"flcarr_i64 = {flcarr_i64}", flush=True)
-            print("FAIL on i64 roundtrip to hdf5", flush=True)
-            self.assertTrue(False)
-        else:
-            output_i64 = check_i64.to_array(use_threads=True)
-            if not np.array_equal(output_i64, input64):
-                print("FAIL on i64 hdf5 decompressed array check", flush=True)
-                self.assertTrue(False)
-
-        if check_f32 != flcarr_f32:
-            print("FAIL on f32 roundtrip to hdf5", flush=True)
-            self.assertTrue(False)
-        else:
-            output_f32 = check_f32.to_array(use_threads=True)
-            if not np.allclose(output_f32, inputf32, rtol=1.0e-5, atol=1.0e-5):
-                print("FAIL on f32 hdf5 decompressed array check", flush=True)
-                self.assertTrue(False)
-
-        if check_f64 != flcarr_f64:
-            print("FAIL on f64 roundtrip to hdf5", flush=True)
-            self.assertTrue(False)
-        else:
-            output_f64 = check_f64.to_array(use_threads=True)
-            if not np.allclose(output_f64, inputf64, rtol=1.0e-5, atol=1.0e-5):
-                print("FAIL on f64 hdf5 decompressed array check", flush=True)
-                self.assertTrue(False)
+        if tmpdir is not None:
+            tmpdir.cleanup()
+            del tmpdir

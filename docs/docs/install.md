@@ -38,7 +38,7 @@ development libraries installed.
 If you have conda available, you can create an environment will all the
 dependencies you need to build flacarray from source. For this example, we
 create an environment called "flacarray". First create the env with all
-dependencies and activate it (FIXME, add a requirements file for dev):
+dependencies and activate it (FIXME: add a requirements file for dev):
 
     conda create -n flacarray \
         c-compiler numpy libflac cython meson-python pkgconfig
@@ -53,7 +53,7 @@ To build and install the package.
 
 To also work on docs, install additional packages:
 
-    conda install mkdocs mkdocstrings mkdocs-jupyter
+    conda install mkdocs mkdocstrings mkdocstrings-python mkdocs-jupyter
     pip install mkdocs-print-site-plugin
 
 ### Other Ways of Building

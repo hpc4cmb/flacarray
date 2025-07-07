@@ -11,167 +11,157 @@ from ..array import FlacArray
 from ..compress import array_compress
 from ..decompress import array_decompress
 from ..demo import create_fake_data
+from ..mpi import use_mpi, MPI
+from ..utils import float_to_int, int_to_float
 
 
 class ArrayTest(unittest.TestCase):
     def setUp(self):
         fixture_name = os.path.splitext(os.path.basename(__file__))[0]
+        if use_mpi:
+            self.comm = MPI.COMM_WORLD
+        else:
+            self.comm = None
 
     def test_helpers(self):
-        data_shape = (4, 3, 10000)
-        leading_shape = data_shape[:-1]
-        flatsize = np.prod(data_shape)
-        rng = np.random.default_rng()
+        if self.comm is None:
+            rank = 0
+        else:
+            rank = self.comm.rank
+        for data_shape in [
+            (4, 3, 1000),
+            (10000,),
+        ]:
+            shpstr = "x".join([f"{x}" for x in data_shape])
+            for dt, dtstr, sigma, quant in [
+                (np.dtype(np.int32), "i32", None, None),
+                (np.dtype(np.int64), "i64", None, None),
+                (np.dtype(np.float32), "f32", 1.0, 1.0e-6),
+                (np.dtype(np.float64), "f64", 1.0, 1.0e-7),
+            ]:
+                ftol = 1.0e-5
+                if quant is not None:
+                    ftol = 10.0 * quant
+                # Run identical tests on all processes (no MPI).
+                input, _ = create_fake_data(
+                    data_shape, sigma=sigma, dtype=dt, comm=None
+                )
 
-        n_half = 5
-        first = data_shape[-1] // 2 - n_half
-        last = data_shape[-1] // 2 + n_half
+                n_half = 5
+                first = data_shape[-1] // 2 - n_half
+                last = data_shape[-1] // 2 + n_half
 
-        # int32 data
+                comp, starts, nbytes, off, gain = array_compress(
+                    input, level=5, quanta=quant
+                )
+                if dt == np.dtype(np.int32) or dt == np.dtype(np.int64):
+                    # Integer inputs, gains and offsets should be None
+                    self.assertTrue(off is None)
+                    self.assertTrue(gain is None)
 
-        data_i32 = (
-            rng.integers(low=-(2**27), high=2**30, size=flatsize, dtype=np.int32)
-            .reshape(data_shape)
-            .astype(np.int32)
-        )
+                # Decompress full array and compare
 
-        comp_i32, starts_i32, nbytes_i32, off_i32, gain_i32 = array_compress(
-            data_i32, level=5
-        )
-        self.assertTrue(off_i32 is None)
-        self.assertTrue(gain_i32 is None)
+                if dt == np.dtype(np.int64) or dt == np.dtype(np.float64):
+                    check = array_decompress(
+                        comp,
+                        data_shape[-1],
+                        starts,
+                        nbytes,
+                        stream_offsets=off,
+                        stream_gains=gain,
+                        is_int64=True,
+                    )
+                else:
+                    check = array_decompress(
+                        comp,
+                        data_shape[-1],
+                        starts,
+                        nbytes,
+                        stream_offsets=off,
+                        stream_gains=gain,
+                        is_int64=False,
+                    )
 
-        check_i32 = array_decompress(comp_i32, data_shape[-1], starts_i32, nbytes_i32)
-        self.assertTrue(np.array_equal(check_i32, data_i32))
+                if dt == np.dtype(np.int32) or dt == np.dtype(np.int64):
+                    local_fail = not np.array_equal(check, input)
+                elif dt == np.dtype(np.float32):
+                    local_fail = not np.allclose(check, input, atol=ftol)
+                else:
+                    local_fail = not np.allclose(check, input, atol=ftol)
+                if self.comm is not None:
+                    fail = self.comm.allreduce(local_fail, op=MPI.SUM)
+                else:
+                    fail = local_fail
+                if fail:
+                    print(f"input_{dtstr}_{shpstr}[{rank}] = {input}", flush=True)
+                    print(f"check_{dtstr}_{shpstr}[{rank}] = {check}", flush=True)
+                    print(f"FAIL on {dtstr} roundtrip", flush=True)
+                    self.assertTrue(False)
 
-        check_slc_i32 = array_decompress(
-            comp_i32,
-            data_shape[-1],
-            starts_i32,
-            nbytes_i32,
-            first_stream_sample=first,
-            last_stream_sample=last,
-        )
-        self.assertTrue(np.array_equal(check_slc_i32, data_i32[:, :, first:last]))
+                # Decompress a slice and compare
 
-        # int64 data.  First try a case that should work, with all values inside
-        # the 32bit range.
+                if dt == np.dtype(np.int64) or dt == np.dtype(np.float64):
+                    check = array_decompress(
+                        comp,
+                        data_shape[-1],
+                        starts,
+                        nbytes,
+                        stream_offsets=off,
+                        stream_gains=gain,
+                        first_stream_sample=first,
+                        last_stream_sample=last,
+                        is_int64=True,
+                    )
+                else:
+                    check = array_decompress(
+                        comp,
+                        data_shape[-1],
+                        starts,
+                        nbytes,
+                        stream_offsets=off,
+                        stream_gains=gain,
+                        first_stream_sample=first,
+                        last_stream_sample=last,
+                        is_int64=False,
+                    )
 
-        data_i64 = rng.integers(
-            low=-(2**30), high=2**29, size=flatsize, dtype=np.int64
-        ).reshape(data_shape)
+                slc = [slice(0, x) for x in input.shape]
+                slc[-1] = slice(first, last)
+                slc = tuple(slc)
 
-        comp_i64, starts_i64, nbytes_i64, off_i64, gain_i64 = array_compress(
-            data_i64, level=5
-        )
-        self.assertTrue(gain_i64 is None)
-
-        check_i64 = array_decompress(
-            comp_i64, data_shape[-1], starts_i64, nbytes_i64, stream_offsets=off_i64
-        )
-        self.assertTrue(np.array_equal(check_i64, data_i64))
-
-        check_slc_i64 = array_decompress(
-            comp_i64,
-            data_shape[-1],
-            starts_i64,
-            nbytes_i64,
-            stream_offsets=off_i64,
-            first_stream_sample=first,
-            last_stream_sample=last,
-        )
-        self.assertTrue(np.array_equal(check_slc_i64, data_i64[:, :, first:last]))
-
-        # Now try a case that should NOT work.
-
-        data_i64 = rng.integers(
-            low=-(2**60), high=2**62, size=flatsize, dtype=np.int64
-        ).reshape(data_shape)
-
-        try:
-            comp_i64, starts_i64, nbytes_i64, off_i64, gain_i64 = array_compress(
-                data_i64, level=5
-            )
-            print("Failed to catch truncation of int64 data")
-            self.assertTrue(False)
-        except RuntimeError:
-            pass
-
-        # float32 data
-
-        data_f32 = create_fake_data(data_shape, 1.0).astype(np.float32)
-        comp_f32, starts_f32, nbytes_f32, off_f32, gain_f32 = array_compress(
-            data_f32, level=5
-        )
-        check_f32 = array_decompress(
-            comp_f32,
-            data_shape[-1],
-            starts_f32,
-            nbytes_f32,
-            stream_offsets=off_f32,
-            stream_gains=gain_f32,
-        )
-        self.assertTrue(np.allclose(check_f32, data_f32, rtol=1e-5, atol=1e-5))
-
-        check_slc_f32 = array_decompress(
-            comp_f32,
-            data_shape[-1],
-            starts_f32,
-            nbytes_f32,
-            stream_offsets=off_f32,
-            stream_gains=gain_f32,
-            first_stream_sample=first,
-            last_stream_sample=last,
-        )
-        self.assertTrue(
-            np.allclose(check_slc_f32, data_f32[:, :, first:last], rtol=1e-5, atol=1e-5)
-        )
-
-        # float64 data
-
-        data_f64 = create_fake_data(data_shape, 1.0)
-
-        comp_f64, starts_f64, nbytes_f64, off_f64, gain_f64 = array_compress(
-            data_f64, level=5
-        )
-        check_f64 = array_decompress(
-            comp_f64,
-            data_shape[-1],
-            starts_f64,
-            nbytes_f64,
-            stream_offsets=off_f64,
-            stream_gains=gain_f64,
-        )
-        self.assertTrue(np.allclose(check_f64, data_f64, rtol=1e-5, atol=1e-5))
-
-        check_slc_f64 = array_decompress(
-            comp_f64,
-            data_shape[-1],
-            starts_f64,
-            nbytes_f64,
-            stream_offsets=off_f64,
-            stream_gains=gain_f64,
-            first_stream_sample=first,
-            last_stream_sample=last,
-        )
-        self.assertTrue(
-            np.allclose(check_slc_f64, data_f64[:, :, first:last], rtol=1e-5, atol=1e-5)
-        )
+                if dt == np.dtype(np.int32) or dt == np.dtype(np.int64):
+                    local_fail = not np.array_equal(check, input[slc])
+                elif dt == np.dtype(np.float32):
+                    local_fail = not np.allclose(check, input[slc], atol=ftol)
+                else:
+                    local_fail = not np.allclose(check, input[slc], atol=ftol)
+                if self.comm is not None:
+                    fail = self.comm.allreduce(local_fail, op=MPI.SUM)
+                else:
+                    fail = local_fail
+                if fail:
+                    print(f"check_{dtstr}_{shpstr}[{rank}] = {check}", flush=True)
+                    print(f"input_{dtstr}_{shpstr}[{rank}] = {input[slc]}", flush=True)
+                    print(f"FAIL on {dtstr} roundtrip slice {slc}", flush=True)
+                    self.assertTrue(False)
 
     def test_array_memory(self):
         data_shape = (4, 3, 10000)
-        data_f64 = create_fake_data(data_shape, 1.0)
+        quanta = 1.0e-16
+        data_f64, _ = create_fake_data(data_shape, 1.0)
         n_half = 5
         first = data_shape[-1] // 2 - n_half
         last = data_shape[-1] // 2 + n_half
 
-        farray = FlacArray.from_array(data_f64)
+        farray = FlacArray.from_array(data_f64, quanta=quanta)
         check_f64 = farray.to_array()
-        self.assertTrue(np.allclose(check_f64, data_f64, rtol=1e-5, atol=1e-5))
+        self.assertTrue(np.allclose(check_f64, data_f64, rtol=1e-15, atol=1e-15))
 
         check_slc_f64 = farray.to_array(stream_slice=slice(first, last, 1))
         self.assertTrue(
-            np.allclose(check_slc_f64, data_f64[:, :, first:last], rtol=1e-5, atol=1e-5)
+            np.allclose(
+                check_slc_f64, data_f64[:, :, first:last], rtol=1e-15, atol=1e-15
+            )
         )
 
     def test_slicing_shape(self):
@@ -213,3 +203,81 @@ class ArrayTest(unittest.TestCase):
                     flush=True,
                 )
                 raise RuntimeError("Failed slice shape check")
+
+    def test_slicing_1D(self):
+        data_shape = (10000,)
+        flatsize = np.prod(data_shape)
+        rng = np.random.default_rng()
+        data_i32 = (
+            rng.integers(low=-(2**27), high=2**30, size=flatsize, dtype=np.int32)
+            .reshape(data_shape)
+            .astype(np.int32)
+        )
+
+        farray = FlacArray.from_array(data_i32)
+
+        # Try some slices and verify expected result shape.
+        for dslc in [(slice(0)), (slice(1, 3)), (100,)]:
+            # Slice of the original numpy array
+            check = data_i32[dslc]
+            # Slice of the FlacArray
+            fcheck = farray[dslc]
+
+            # Compare the shapes
+            if fcheck.shape != check.shape:
+                print(
+                    f"Array[{dslc}] shape: {fcheck.shape} != {check.shape}",
+                    flush=True,
+                )
+                raise RuntimeError("Failed slice shape check")
+
+    def test_quantization(self):
+        data_shape = (1, 1000)
+        for dt, dtstr, sigma, quant in [
+            (np.dtype(np.float32), "f32", 1.0, 1.0e-3),
+            (np.dtype(np.float64), "f64", 1.0, 1.0e-3),
+        ]:
+            for dc in [0.0, -0.5, 0.5, -10.0, 10.0, -10.51, -10.4]:
+                # Run identical tests on all processes (no MPI).
+                input, _ = create_fake_data(
+                    data_shape, sigma=sigma, dtype=dt, comm=None, dc_sigma=None
+                )
+                original = input + dc
+
+                # First test that roundtrip conversion of this random data to integer
+                # and back results in errors that are less than half the quantization
+                # value.
+
+                data_int, data_offset, data_gain = float_to_int(original, quanta=quant)
+                output = int_to_float(data_int, data_offset, data_gain)
+                residual = np.absolute(output - original)
+                max_resid = np.amax(residual)
+                if max_resid > 0.5 * quant:
+                    msg = f"FAIL: Quantization of {dtstr} with quant={quant}, "
+                    msg += f"offset={dc} has max absolute error of {max_resid} "
+                    msg += f"which is larger than 0.5 * quant ({0.5 * quant})"
+                    print(msg, flush=True)
+                    self.assertTrue(False)
+
+                # Next, pre-truncate the input random floating point data to the nearest
+                # quanta value.  The resulting quantized data should compress losslessly
+                # up to the machine precision of the dtype we are using across the
+                # dynamic range of the data.
+                mach_prec = np.finfo(dt).eps
+
+                quantized = np.array(original / quant, dtype=np.int64).astype(dt)
+                quantized *= quant
+                quantized_range = 2 * np.amax(np.absolute(quantized))
+                q_err = quantized_range * mach_prec
+
+                data_int, data_offset, data_gain = float_to_int(quantized, quanta=quant)
+                output = int_to_float(data_int, data_offset, data_gain)
+                residual = np.absolute(output - quantized)
+                max_resid = np.amax(residual)
+                if max_resid > q_err:
+                    msg = f"FAIL: Quantization of pre-truncated {dtstr} with "
+                    msg += f"quant={quant}, offset={dc} has max absolute error of"
+                    msg += f" {max_resid} which is larger than expected for dtype"
+                    msg += f" and data range ({q_err})"
+                    print(msg, flush=True)
+                    self.assertTrue(False)
