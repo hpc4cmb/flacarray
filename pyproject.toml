@@ -9,7 +9,7 @@ build-backend = "mesonpy"
 
 [project]
 name = "flacarray"
-version = "0.3.1"
+version = "0.3.2"
 description = "FLAC Compression of Arrays"
 readme = "README.md"
 maintainers = [
@@ -20,7 +20,7 @@ dependencies = [
   "numpy",
 ]
 classifiers = [
-    "Development Status :: 3 - Alpha",
+    "Development Status :: 4 - Beta",
     "License :: OSI Approved :: BSD License",
     "Programming Language :: C",
     "Programming Language :: Python",
