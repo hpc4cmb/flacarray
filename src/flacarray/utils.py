@@ -18,7 +18,7 @@ from .libflacarray import (
 )
 
 
-log = logging.getLogger()
+log = logging.getLogger("flacarray")
 log.setLevel(logging.INFO)
 env_keys = ["FLACARRAY_LOGLEVEL", "FLACARRAY_LOG_LEVEL"]
 for env_key in env_keys:
