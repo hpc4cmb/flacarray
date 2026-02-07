@@ -1,10 +1,11 @@
-# Compiled Extension
+# Compiled Library
 
-This directory contains sources for the `libflacarray` compiled extension.
-There are some standard C source files and a Cython wrapper. This extension is
-built by the top-level `project.toml` file using meson-python. You should not
-have to modify any files in this directory unless you are working with the code
-that directly calls libFLAC.
+This directory contains sources for the `libflacarray` compiled library.
+There are some standard C source files and the output library is wrapped by
+Cython in the parent directory.
+
+You should not have to modify any files in this directory unless you are working
+with the code that directly calls libFLAC.
 
 ## Developer Notes
 

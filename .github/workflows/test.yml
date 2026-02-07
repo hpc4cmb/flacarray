@@ -29,30 +29,30 @@ jobs:
       matrix:
         include:
           - os: ubuntu-latest
-            python: "3.9"
+            python: "3.10"
             arch: Linux-x86_64
             ompdisable: 0
           - os: ubuntu-latest
-            python: "3.11"
+            python: "3.12"
             arch: Linux-x86_64
             ompdisable: 0
           - os: ubuntu-latest
-            python: "3.13"
+            python: "3.14"
             arch: Linux-x86_64
             ompdisable: 0
-          - os: macos-latest
+          - os: macos-15-intel
             python: "3.10"
             arch: MacOSX-x86_64
             ompdisable: 1
-          - os: macos-latest
+          - os: macos-15-intel
             python: "3.13"
             arch: MacOSX-x86_64
             ompdisable: 1
-          - os: macos-latest
+          - os: macos-15
             python: "3.10"
             arch: MacOSX-arm64
             ompdisable: 1
-          - os: macos-latest
+          - os: macos-15
             python: "3.13"
             arch: MacOSX-arm64
             ompdisable: 1
@@ -85,7 +85,6 @@ jobs:
             && conda create --yes -n test python==${{ matrix.python }} \
             && conda activate test \
             && conda install --yes --file packaging/conda_build_requirements.txt
-          if test ${{ matrix.python }} = "3.9"; then conda install libxcrypt; fi
 
       - name: Install
         run: |
