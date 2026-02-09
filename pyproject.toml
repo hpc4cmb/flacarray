@@ -69,7 +69,7 @@ wheel.license-files = ["LICENSE"]
 # Run CMake as part of building the wheel.
 wheel.cmake = true
 # Target the platlib or the purelib.
-wheel.platlib = ""
+wheel.platlib = true
 # A set of patterns to exclude from the wheel.
 wheel.exclude = []
 # The build tag to use for the wheel. If empty, no build tag is used.

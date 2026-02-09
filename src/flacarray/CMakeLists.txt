@@ -31,8 +31,8 @@ target_link_libraries(flacarray PRIVATE flcarr)
 set_target_properties(flacarray PROPERTIES PUBLIC_HEADER ${libflcarr_HEADERS})
 
 install(TARGETS flacarray
-    LIBRARY DESTINATION "${SKBUILD_DATA_DIR}/lib"
-    PUBLIC_HEADER DESTINATION "${SKBUILD_DATA_DIR}/include"
+    LIBRARY DESTINATION "${SKBUILD_PROJECT_NAME}/lib"
+    PUBLIC_HEADER DESTINATION "${SKBUILD_PROJECT_NAME}/include"
 )
 
 # Create a compiled python extension
@@ -45,7 +45,7 @@ target_link_libraries(_libflacarray PRIVATE flcarr)
 
 target_include_directories(_libflacarray PRIVATE ${NUMPY_INCLUDE_DIR})
 
-install(TARGETS _libflacarray DESTINATION ${SKBUILD_PROJECT_NAME})
+install(TARGETS _libflacarray LIBRARY DESTINATION ${SKBUILD_PROJECT_NAME})
 
 # Install python files
 
