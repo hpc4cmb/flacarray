@@ -3,3 +3,4 @@
 # a BSD-style license that can be found in the LICENSE file.
 
 from .benchmark import cli as bench_cli
+from .config import cli as config_cli

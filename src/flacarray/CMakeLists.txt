@@ -44,7 +44,7 @@ set_target_properties(flacarray PROPERTIES PUBLIC_HEADER ${libflcarr_HEADERS})
 
 install(TARGETS flacarray
     LIBRARY DESTINATION "${SKBUILD_PROJECT_NAME}/lib"
-    PUBLIC_HEADER DESTINATION "${SKBUILD_HEADERS_DIR}"
+    PUBLIC_HEADER DESTINATION "${SKBUILD_PROJECT_NAME}/include"
 )
 
 # Create the compiled test executable

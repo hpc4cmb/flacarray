@@ -36,6 +36,7 @@ classifiers = [
 
 [project.scripts]
 flacarray_benchmark = "flacarray.scripts:bench_cli"
+flacarray_config = "flacarray.scripts:config_cli"
 
 [project.urls]
 "Documentation" = "https://hpc4cmb.github.io/flacarray/"
