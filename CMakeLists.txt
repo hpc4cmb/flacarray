@@ -1,10 +1,5 @@
 cmake_minimum_required(VERSION 3.21)
 
-project(${SKBUILD_PROJECT_NAME} LANGUAGES C)
-
-# Auxiliary files
-list(APPEND CMAKE_MODULE_PATH "${CMAKE_CURRENT_LIST_DIR}/cmake")
-
 # Warn if the user invokes CMake directly
 if (NOT SKBUILD)
     message(WARNING "\
@@ -18,6 +13,12 @@ if (NOT SKBUILD)
 
     ")
 endif()
+
+# Auxiliary files
+list(APPEND CMAKE_MODULE_PATH "${CMAKE_CURRENT_LIST_DIR}/cmake")
+
+# Define the project with name and version from pyproject.toml
+project(${SKBUILD_PROJECT_NAME} LANGUAGES C VERSION ${SKBUILD_PROJECT_VERSION})
 
 # We are building libraries that will eventually be linked into shared
 # modules.  All code should be built with PIC.

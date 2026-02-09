@@ -8,6 +8,9 @@
 #include "flacarray.h"
 
 
+extern const char * FLACARRAY_VERSION;
+
+
 // Local function for debugging and testing
 
 int verify(
@@ -66,12 +69,12 @@ int verify(
             // We already had a failure, skip over remaining loop iterations
             continue;
         }
-        fprintf(stderr, "Verifying stream %ld:\n", istream);
-        fprintf(stderr, "  start byte = %ld\n", starts[istream]);
-        fprintf(stderr, "  end byte = %ld\n", starts[istream] + nbytes[istream]);
-        fprintf(
-            stderr, "  output start element = %ld\n", istream * n_decode * n_channels
-        );
+        // fprintf(stderr, "Verifying stream %ld:\n", istream);
+        // fprintf(stderr, "  start byte = %ld\n", starts[istream]);
+        // fprintf(stderr, "  end byte = %ld\n", starts[istream] + nbytes[istream]);
+        // fprintf(
+        //     stderr, "  output start element = %ld\n", istream * n_decode * n_channels
+        // );
         callback_data.cur_stream = istream;
         callback_data.stream_start = starts[istream];
         callback_data.stream_end = starts[istream] + nbytes[istream];
@@ -100,27 +103,27 @@ int verify(
         }
         if (n_decode == stream_size) {
             // We are decoding all samples
-            fprintf(
-                stderr,
-                "  decoding all samples (n_decode = %ld, stream_size = %ld)\n",
-                n_decode,
-                stream_size
-            );
+            // fprintf(
+            //     stderr,
+            //     "  decoding all samples (n_decode = %ld, stream_size = %ld)\n",
+            //     n_decode,
+            //     stream_size
+            // );
             success = FLAC__stream_decoder_process_until_end_of_stream(decoder);
-            fprintf(stderr, "    success = %d\n", (int)success);
+            // fprintf(stderr, "    success = %d\n", (int)success);
             if (!success) {
                 errors |= ERROR_DECODE_PROCESS;
                 continue;
             }
         } else {
             // We are decoding a slice of samples.  Seek to the start.
-            fprintf(
-                stderr,
-                "  decoding slice of samples starting at %ld, seeking...\n",
-                first_decode
-            );
+            // fprintf(
+            //     stderr,
+            //     "  decoding slice of samples starting at %ld, seeking...\n",
+            //     first_decode
+            // );
             success = FLAC__stream_decoder_seek_absolute(decoder, first_decode);
-            fprintf(stderr, "    success = %d\n", (int)success);
+            // fprintf(stderr, "    success = %d\n", (int)success);
             if (!success) {
                 errors |= ERROR_DECODE_PROCESS;
                 continue;
@@ -131,15 +134,15 @@ int verify(
             while (
                 callback_data.decomp_nelem < n_decode
             ) {
-                fprintf(
-                    stderr,
-                    "  decoding frame %ld, decomp_nelem = %ld, n_decode = %ld\n",
-                    curframe,
-                    callback_data.decomp_nelem,
-                    n_decode
-                );
+                // fprintf(
+                //     stderr,
+                //     "  decoding frame %ld, decomp_nelem = %ld, n_decode = %ld\n",
+                //     curframe,
+                //     callback_data.decomp_nelem,
+                //     n_decode
+                // );
                 success = FLAC__stream_decoder_process_single(decoder);
-                fprintf(stderr, "    success = %d\n", (int)success);
+                // fprintf(stderr, "    success = %d\n", (int)success);
                 if (!success) {
                     errors |= ERROR_DECODE_PROCESS;
                     continue;
@@ -678,6 +681,8 @@ void test_64bit() {
 
 
 int main(int argc, char *argv[]) {
+    fprintf(stderr, "=========================================\n\n");
+    fprintf(stderr, "Using libflacarray version %s\n\n", FLACARRAY_VERSION);
     test_32bit();
     test_64bit();
     return 0;

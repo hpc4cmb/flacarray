@@ -1,10 +1,22 @@
 
+# Generate the version files, if needed
+
+set(c_version ${CMAKE_CURRENT_SOURCE_DIR}/libflacarray/version.c)
+set(py_version ${CMAKE_CURRENT_SOURCE_DIR}/_version.py)
+
+add_custom_command(OUTPUT ${c_version} ${py_version}
+    COMMAND ${CMAKE_CURRENT_SOURCE_DIR}/generate_version.sh ${SKBUILD_PROJECT_VERSION}
+    COMMENT "Updating version files if needed ..."
+    WORKING_DIRECTORY "${CMAKE_CURRENT_SOURCE_DIR}"
+)
+
 # Create an object library of the compiled sources.
 
 set(libflcarr_SOURCES
     libflacarray/compress.c
     libflacarray/decompress.c
     libflacarray/utils.c
+    "${c_version}"
 )
 
 set(libflcarr_HEADERS
@@ -32,8 +44,16 @@ set_target_properties(flacarray PROPERTIES PUBLIC_HEADER ${libflcarr_HEADERS})
 
 install(TARGETS flacarray
     LIBRARY DESTINATION "${SKBUILD_PROJECT_NAME}/lib"
-    PUBLIC_HEADER DESTINATION "${SKBUILD_PROJECT_NAME}/include"
+    PUBLIC_HEADER DESTINATION "${SKBUILD_HEADERS_DIR}"
 )
+
+# Create the compiled test executable
+
+add_executable(flacarray_c_test libflacarray/test.c)
+target_link_libraries(flacarray_c_test PRIVATE flcarr)
+set_target_properties(flacarray_c_test PROPERTIES PRIVATE_HEADER ${libflcarr_HEADERS})
+
+install(TARGETS flacarray_c_test RUNTIME DESTINATION ${SKBUILD_SCRIPTS_DIR})
 
 # Create a compiled python extension
 
@@ -51,6 +71,7 @@ install(TARGETS _libflacarray LIBRARY DESTINATION ${SKBUILD_PROJECT_NAME})
 
 set(PYTHON_SOURCES
     __init__.py
+    "${py_version}"
     array.py
     compress.py
     decompress.py
