@@ -123,3 +123,12 @@ jobs:
             && pushd test >/dev/null 2>&1 \
             && mpirun -np 2 python -m mpi4py -c 'import flacarray.tests; flacarray.tests.run()' \
             && popd >/dev/null 2>&1
+
+      - name: External C Link Tests
+        run: |
+          source ~/conda/etc/profile.d/conda.sh \
+            && conda activate test \
+            && export OMP_NUM_THREADS=2 \
+            && cmake -S packaging/test_c_link -B build_c_link \
+            && cmake --build build_c_link \
+            && ctest --test-dir build_c_link

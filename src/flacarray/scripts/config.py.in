@@ -4,7 +4,6 @@
 
 import argparse
 import os
-import sysconfig
 
 # We use absolute imports to find the location of the installed
 # package.
@@ -28,6 +27,13 @@ def cli():
         help="Print the package install location",
     )
     parser.add_argument(
+        "--static",
+        required=False,
+        default=False,
+        action="store_true",
+        help="Print the values for static linking instead of dynamic",
+    )
+    parser.add_argument(
         "--cflags",
         required=False,
         default=False,
@@ -40,6 +46,13 @@ def cli():
         default=False,
         action="store_true",
         help="Print the directory containing flacarray.h",
+    )
+    parser.add_argument(
+        "--libdir",
+        required=False,
+        default=False,
+        action="store_true",
+        help="Print the directory containing libflacarray",
     )
     parser.add_argument(
         "--ldflags",
@@ -56,38 +69,55 @@ def cli():
         help="Print the linking libraries (-lflacarray)",
     )
     parser.add_argument(
-        "--lib",
+        "--libraries",
         required=False,
         default=False,
         action="store_true",
-        help="Print the path to libflacarray",
+        help="Print the full library paths",
     )
 
     args = parser.parse_args()
 
     version = flacarray.__version__
     pkg_root = os.path.dirname(flacarray.__file__)
-    pkg_incdir = os.path.join(pkg_root, "include")
-    pkg_libdir = os.path.join(pkg_root, "lib")
+    pkg_incdir = f"{pkg_root}/include"
+    pkg_libdir = f"{pkg_root}/lib"
 
-    suffix = sysconfig.get_config_var("SHLIB_SUFFIX")
+    shared_suffix = "@CMAKE_SHARED_LIBRARY_SUFFIX@"
+    static_suffix = "@CMAKE_STATIC_LIBRARY_SUFFIX@"
 
+    # First process options that should be used in isolation.
     if args.version:
         print(version)
     elif args.package:
         print(pkg_root)
     elif args.include:
         print(pkg_incdir)
-    elif args.cflags:
-        print(f"-I{pkg_incdir}")
-    elif args.ldflags:
-        print(f"-L{pkg_libdir}")
-    elif args.libs:
-        print("-lflacarray")
-    elif args.lib:
-        print(os.path.join(pkg_libdir, f"libflacarray{suffix}"))
+    elif args.libdir:
+        print(pkg_libdir)
+    elif args.libraries:
+        # Print full library paths
+        if args.static:
+            libpath = os.path.join(pkg_libdir, f"libflacarray{static_suffix}")
+        else:
+            libpath = os.path.join(pkg_libdir, f"libflacarray{shared_suffix}")
+        print(f"{libpath};@CONF_EXTRA_LINK@")
     else:
-        parser.print_help()
+        # These options can be combined
+        output = ""
+        if args.cflags:
+            output = f"{output} -I{pkg_incdir}"
+        if args.ldflags:
+            output = f"{output} -L{pkg_libdir}"
+        if args.libs:
+            if args.static:
+                output = f"{output} -lflacarray_static"
+            else:
+                output = f"{output} -lflacarray"
+        if output != "":
+            print(output)
+        else:
+            parser.print_help()
 
 
 if __name__ == "__main__":

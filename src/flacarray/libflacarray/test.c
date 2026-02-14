@@ -5,7 +5,7 @@
 #include <stdio.h>
 #include <time.h>
 
-#include "flacarray.h"
+#include <flacarray.h>
 
 
 extern const char * FLACARRAY_VERSION;

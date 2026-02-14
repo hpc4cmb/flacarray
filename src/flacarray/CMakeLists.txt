@@ -36,7 +36,7 @@ target_link_libraries(flcarr PUBLIC "${FLAC_LIBRARIES}")
 
 target_link_libraries(flcarr PUBLIC "${OpenMP_C_LIBRARIES}")
 
-# Create an actual installed library, usable by external compiled software
+# Create an shared library, usable by external compiled software
 
 add_library(flacarray SHARED)
 target_link_libraries(flacarray PRIVATE flcarr)
@@ -47,11 +47,21 @@ install(TARGETS flacarray
     PUBLIC_HEADER DESTINATION "${SKBUILD_PROJECT_NAME}/include"
 )
 
+# Create a static library, usable by external compiled software
+
+add_library(flacarray_static STATIC)
+target_link_libraries(flacarray_static PRIVATE flcarr)
+set_target_properties(flacarray_static PROPERTIES PUBLIC_HEADER ${libflcarr_HEADERS})
+
+install(TARGETS flacarray_static
+    LIBRARY DESTINATION "${SKBUILD_PROJECT_NAME}/lib"
+)
+
 # Create the compiled test executable
 
 add_executable(flacarray_c_test libflacarray/test.c)
 target_link_libraries(flacarray_c_test PRIVATE flcarr)
-set_target_properties(flacarray_c_test PROPERTIES PRIVATE_HEADER ${libflcarr_HEADERS})
+# set_target_properties(flacarray_c_test PROPERTIES PRIVATE_HEADER ${libflcarr_HEADERS})
 
 install(TARGETS flacarray_c_test RUNTIME DESTINATION ${SKBUILD_SCRIPTS_DIR})
 
