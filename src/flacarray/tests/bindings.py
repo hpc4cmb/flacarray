@@ -7,7 +7,7 @@ import unittest
 
 import numpy as np
 
-from ..libflacarray import (
+from .._libflacarray import (
     wrap_encode_i32,
     wrap_encode_i32_threaded,
     wrap_encode_i64,

@@ -23,10 +23,6 @@ jobs:
           # Linux 64 bit manylinux
           - os: ubuntu-latest
             arch: x86_64
-            python: 39
-            builder: manylinux
-          - os: ubuntu-latest
-            arch: x86_64
             python: 310
             builder: manylinux
           - os: ubuntu-latest
@@ -41,48 +37,54 @@ jobs:
             arch: x86_64
             python: 313
             builder: manylinux
+          - os: ubuntu-latest
+            arch: x86_64
+            python: 314
+            builder: manylinux
 
-          # MacOS x86_64.  The macos-13 runner is the last
-          # Intel-based runner version.  At some point we'll
-          # need to switch to macos-latest and test cross compiling.
-          - os: macos-13
+          # MacOS x86_64.
+          - os: macos-15-intel
             arch: x86_64
             python: 310
             builder: macosx
-          - os: macos-13
+          - os: macos-15-intel
             arch: x86_64
             python: 311
             builder: macosx
-          - os: macos-13
+          - os: macos-15-intel
             arch: x86_64
             python: 312
             builder: macosx
-          - os: macos-13
+          - os: macos-15-intel
             arch: x86_64
             python: 313
             builder: macosx
 
           # MacOS arm64
-          - os: macos-latest
+          - os: macos-15
             arch: arm64
             python: 310
             builder: macosx
-          - os: macos-latest
+          - os: macos-15
             arch: arm64
             python: 311
             builder: macosx
-          - os: macos-latest
+          - os: macos-15
             arch: arm64
             python: 312
             builder: macosx
-          - os: macos-latest
+          - os: macos-15
             arch: arm64
             python: 313
             builder: macosx
+          - os: macos-15
+            arch: arm64
+            python: 314
+            builder: macosx
     env:
       CIBW_BUILD: cp${{ matrix.python }}-${{ matrix.builder }}_${{ matrix.arch }}
-      CIBW_MANYLINUX_X86_64_IMAGE: ${{ matrix.builder }}2014
-      CIBW_MANYLINUX_I686_IMAGE: ${{ matrix.builder }}2014
+      CIBW_MANYLINUX_X86_64_IMAGE: ${{ matrix.builder }}_2_28
+      CIBW_MANYLINUX_I686_IMAGE: ${{ matrix.builder }}_2_28
       CIBW_BUILD_VERBOSITY: 3
       CIBW_ENVIRONMENT_LINUX: >
         CC=gcc
@@ -100,11 +102,11 @@ jobs:
       - uses: actions/setup-python@v6
         name: Install Python
         with:
-          python-version: '3.11'
+          python-version: '3.13'
 
       - name: Install cibuildwheel
         run: |
-          python -m pip install cibuildwheel==2.22.0
+          python -m pip install cibuildwheel==3.3.1
 
       - name: Build wheel
         run: |

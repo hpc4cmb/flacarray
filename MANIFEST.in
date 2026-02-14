@@ -1,9 +1,0 @@
-include MANIFEST.in
-include pyproject.toml
-include AUTHORS
-include LICENSE
-include *.md
-recursive-include . meson.build
-recursive-include flacarray
-recursive-include docs
-prune docs/site

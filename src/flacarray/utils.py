@@ -10,7 +10,7 @@ from functools import wraps
 
 import numpy as np
 
-from .libflacarray import (
+from ._libflacarray import (
     wrap_float32_to_int32,
     wrap_float64_to_int64,
     wrap_int32_to_float32,
