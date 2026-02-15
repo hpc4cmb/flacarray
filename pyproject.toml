@@ -63,11 +63,11 @@ cmake.source-dir = "."
 # Use Make as a fallback if a suitable Ninja executable is not found.
 ninja.make-fallback = true
 # The logging level to display.
-logging.level = "WARNING"
+logging.level = "INFO"
 # Files to include in the SDist even if they are skipped by default.
 sdist.include = []
 # Files to exclude from the SDist even if they are included by default.
-sdist.exclude = ["build", "wheelhouse", "docs/site"]
+sdist.exclude = [".github", "build", "wheelhouse", "docs/site"]
 # Try to build a reproducible distribution.
 sdist.reproducible = true
 # If set to True, CMake will be run before building the SDist.

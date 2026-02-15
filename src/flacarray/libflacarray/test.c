@@ -167,11 +167,9 @@ int verify(
 }
 
 
-void test_32bit() {
+void test_32bit(int64_t n_streams, int64_t stream_len) {
     fprintf(stderr, "============= 32bit Tests ===============\n");
 
-    int64_t n_streams = 10;
-    int64_t stream_len = 1000000;
     int64_t input_bytes = n_streams * stream_len * sizeof(int32_t);
     uint32_t level = 5;
 
@@ -419,11 +417,9 @@ void test_32bit() {
 }
 
 
-void test_64bit() {
+void test_64bit(int64_t n_streams, int64_t stream_len) {
     fprintf(stderr, "============= 64bit Tests ===============\n");
 
-    int64_t n_streams = 10;
-    int64_t stream_len = 1000000;
     int64_t input_bytes = n_streams * stream_len * sizeof(int64_t);
     uint32_t level = 5;
 
@@ -683,7 +679,9 @@ void test_64bit() {
 int main(int argc, char *argv[]) {
     fprintf(stderr, "=========================================\n\n");
     fprintf(stderr, "Using libflacarray version %s\n\n", FLACARRAY_VERSION);
-    test_32bit();
-    test_64bit();
+    int64_t n_streams = 100;
+    int64_t stream_len = 100000;
+    test_32bit(n_streams, stream_len);
+    test_64bit(n_streams, stream_len);
     return 0;
 }
