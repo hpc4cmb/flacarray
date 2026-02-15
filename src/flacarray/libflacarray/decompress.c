@@ -239,7 +239,7 @@ int decode(
         callback_data.n_channels = n_channels;
         callback_data.err = ERROR_NONE;
 
-        #pragma omp for schedule(static)
+        #pragma omp for schedule(static) if(use_threads)
         for (int64_t istream = 0; istream < n_stream; ++istream) {
             if (errors != ERROR_NONE) {
                 // We already had a failure, skip over remaining loop iterations

@@ -51,10 +51,9 @@ install(TARGETS flacarray
 
 add_library(flacarray_static STATIC)
 target_link_libraries(flacarray_static PRIVATE flcarr)
-set_target_properties(flacarray_static PROPERTIES PUBLIC_HEADER ${libflcarr_HEADERS})
 
 install(TARGETS flacarray_static
-    LIBRARY DESTINATION "${SKBUILD_PROJECT_NAME}/lib"
+    ARCHIVE DESTINATION "${SKBUILD_PROJECT_NAME}/lib"
 )
 
 # Create the compiled test executable

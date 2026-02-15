@@ -55,21 +55,10 @@ jobs:
             && popd >/dev/null 2>&1
 
       - name: Install Docs Dependencies
-        # AttributeError: 'MathBlockParser' object has no attribute 'parse_axt_heading'
-        # https://github.com/jupyter/nbconvert/issues/2198
-        # mistune = "<3.1"
         run: |
           source ~/conda/etc/profile.d/conda.sh \
             && conda activate docs \
-            && conda install --yes \
-              mkdocs \
-              mkdocstrings \
-              mkdocstrings-python \
-              mkdocs-material \
-              mkdocs-material-extensions \
-              mkdocs-jupyter \
-              "mistune<3.1" \
-            && pip install mkdocs-print-site-plugin \
+            && ./docs/install_requirements.sh \
             && git config user.name 'github-actions[bot]' \
             && git config user.email 'github-actions[bot]@users.noreply.github.com'
 

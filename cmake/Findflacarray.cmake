@@ -21,7 +21,9 @@
 
 # Check whether to search static or dynamic libs
 
-if(${flacarray_USE_STATIC_LIBS})
+option(flacarray_USE_STATIC_LIBS "Link to libflacarray_static.a" OFF)
+
+if(flacarray_USE_STATIC_LIBS)
     set(FLACARRAY_LIB_NAME "flacarray_static")
 else()
     set(FLACARRAY_LIB_NAME "flacarray")
@@ -47,24 +49,33 @@ else()
     # Use flacarray_config
     find_program(FLACARRAY_CONFIG flacarray_config REQUIRED)
     execute_process(
-        COMMAND "${FLACARRAY_CONFIG}" --package
+        COMMAND ${FLACARRAY_CONFIG} --package
         OUTPUT_VARIABLE flacarray_ROOT
         OUTPUT_STRIP_TRAILING_WHITESPACE
     )
     execute_process(
-        COMMAND "${FLACARRAY_CONFIG}" --include
+        COMMAND ${FLACARRAY_CONFIG} --include
         OUTPUT_VARIABLE flacarray_INCLUDE_DIRS
         OUTPUT_STRIP_TRAILING_WHITESPACE
     )
-    execute_process(
-        COMMAND "${FLACARRAY_CONFIG}" --libraries
-        OUTPUT_VARIABLE FLACARRAY_LIB
-        OUTPUT_STRIP_TRAILING_WHITESPACE
-    )
+    if(flacarray_USE_STATIC_LIBS)
+        execute_process(
+            COMMAND ${FLACARRAY_CONFIG} ${FLACARRARY_CONFIG_STATIC} --static --libraries
+            OUTPUT_VARIABLE FLACARRAY_LIB
+            OUTPUT_STRIP_TRAILING_WHITESPACE
+        )
+    else()
+        execute_process(
+            COMMAND ${FLACARRAY_CONFIG} ${FLACARRARY_CONFIG_STATIC} --libraries
+            OUTPUT_VARIABLE FLACARRAY_LIB
+            OUTPUT_STRIP_TRAILING_WHITESPACE
+        )
+    endif()
 endif()
 
 if(FLACARRAY_LIB)
     set(flacarray_LIBRARIES ${FLACARRAY_LIB})
+    message(STATUS "Using flacarray libraries: ${flacarray_LIBRARIES}")
 endif()
 
 include(FindPackageHandleStandardArgs)

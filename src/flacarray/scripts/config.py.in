@@ -98,7 +98,7 @@ def cli():
     elif args.libraries:
         # Print full library paths
         if args.static:
-            libpath = os.path.join(pkg_libdir, f"libflacarray{static_suffix}")
+            libpath = os.path.join(pkg_libdir, f"libflacarray_static{static_suffix}")
         else:
             libpath = os.path.join(pkg_libdir, f"libflacarray{shared_suffix}")
         print(f"{libpath};@CONF_EXTRA_LINK@")

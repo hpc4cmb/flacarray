@@ -86,9 +86,7 @@ Flacarray ships with a low-level C library which can be linked against from comp
 
 ### Linking to Flacarray from CMake
 
-If you are using CMake to build your software, you can use the included FindFlacarray.cmake file in the top of the source tree.  This will set several environment variables.
-
-
+If you are using CMake to build your software, you can copy the included `cmake/Findflacarray.cmake` file into your source tree.  This will set several environment variables that you can use for compiling and linking against flacarray.  See the example in `packaging/test_c_link` for a small package that uses this cmake macro.
 
 ### Other Build Systems
 

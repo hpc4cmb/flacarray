@@ -6,7 +6,7 @@ list(APPEND CMAKE_MODULE_PATH "${CMAKE_CURRENT_SOURCE_DIR}")
 # Add CTest
 enable_testing()
 
-# Define the project with name and version from pyproject.toml
+# Define the project with name and version
 project(c_test LANGUAGES C VERSION 1.0)
 
 # Use modern C
