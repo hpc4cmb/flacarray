@@ -25,7 +25,7 @@ else:
         use_mpi = True
     except Exception:
         # There could be many possible exceptions raised...
-        log.debug("mpi4py not found- MPI operations disabled")
+        log.debug("mpi4py not importable- MPI operations disabled")
         use_mpi = False
         MPI = None
 
