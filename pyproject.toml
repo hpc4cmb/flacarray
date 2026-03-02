@@ -95,7 +95,7 @@ editable.mode = "redirect"
 # Turn on verbose output for the editable mode rebuilds.
 editable.verbose = true
 # Rebuild the project when the package is imported.
-editable.rebuild = false
+editable.rebuild = true
 # Extra args to pass directly to the builder in the build step.
 build.tool-args = []
 # The build targets to use when building the project.
