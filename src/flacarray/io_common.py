@@ -19,8 +19,9 @@ def read_compressed_dataset_slice(dcomp, keep, stream_starts, stream_nbytes):
 
     This function works with zarr or h5py datasets.
 
-    The `keep` and `stream_starts` are relative to the full dataset (i.e. they are
-    "global", not local to a process if using MPI).
+    The `stream_starts` are relative to the full dataset (i.e. they are
+    "global", not local to a process if using MPI).  The keep array should
+    correspond to the streams in `stream_starts` and `stream_nbytes`.
 
     Args:
         dcomp (Dataset):  The open dataset with compressed bytes.
@@ -93,7 +94,7 @@ def extract_proc_buffers(reader, comm, dist, proc, global_leading_shape, keep):
     if keep is None:
         proc_keep = None
     else:
-        proc_keep = keep[dslc]
+        proc_keep = keep[fslc]
 
     # Stream starts
     raw_starts = reader.load_starts(comm, fslc, dslc)

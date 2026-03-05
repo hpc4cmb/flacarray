@@ -456,6 +456,7 @@ def read_array(
     mpi_comm=None,
     mpi_dist=None,
     use_threads=False,
+    no_flatten=False,
 ):
     """Load a numpy array from compressed HDF5.
 
@@ -493,6 +494,8 @@ def read_array(
             element of the leading dimension to assign to each process.
         use_threads (bool):  If True, use OpenMP threads to parallelize decoding.
             This is only beneficial for large arrays.
+        no_flatten (bool):  If True, for single-stream arrays, leave the leading
+            dimension of (1,) in the result.
 
     Returns:
         (array):  The loaded and decompressed data OR the array and the kept indices.
@@ -521,5 +524,5 @@ def read_array(
         mpi_comm=mpi_comm,
         mpi_dist=mpi_dist,
         use_threads=use_threads,
-        no_flatten=False,
+        no_flatten=no_flatten,
     )

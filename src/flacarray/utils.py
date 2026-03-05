@@ -301,7 +301,7 @@ def float_to_int(data, quanta=None, precision=None):
     else:
         # Make sure it is an array
         try:
-            lquant = len(quanta)
+            lquant = len(quanta) # noqa
             # Worked. Check shape
             if quanta.shape != leading_shape:
                 msg = f"quanta array ({quanta}) has shape that does not "
