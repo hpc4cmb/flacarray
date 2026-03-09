@@ -227,7 +227,7 @@ void test_32bit(int64_t n_streams, int64_t stream_len) {
     diff = clock() - start;
     int msec = diff * 1000 / CLOCKS_PER_SEC;
 
-    fprintf(stderr, "Encoded %ld streams of %ld integers (%ld bytes) into %ld bytes, status = %d\n", n_streams, stream_len, input_bytes, n_bytes, status);
+    fprintf(stderr, "Encoded %lld streams of %lld integers (%lld bytes) into %lld bytes, status = %d\n", n_streams, stream_len, input_bytes, n_bytes, status);
     fprintf(stderr, "  CPU time:  %d seconds %d milliseconds\n", msec / 1000, msec % 1000);
 
     free(compressed);
@@ -247,7 +247,7 @@ void test_32bit(int64_t n_streams, int64_t stream_len) {
     diff = clock() - start;
     msec = diff * 1000 / CLOCKS_PER_SEC;
 
-    fprintf(stderr, "Encoded (threaded) %ld streams of %ld integers (%ld bytes) into %ld bytes, status = %d\n", n_streams, stream_len, input_bytes, n_bytes, status);
+    fprintf(stderr, "Encoded (threaded) %lld streams of %lld integers (%lld bytes) into %lld bytes, status = %d\n", n_streams, stream_len, input_bytes, n_bytes, status);
     fprintf(stderr, "  CPU time:  %d seconds %d milliseconds\n", msec / 1000, msec % 1000);
 
     // Compute stream nbytes
@@ -275,7 +275,7 @@ void test_32bit(int64_t n_streams, int64_t stream_len) {
         first_sample,
         last_sample
     );
-    fprintf(stderr, "Verified %ld streams of %ld integers, status = %d\n", n_streams, stream_len, status);
+    fprintf(stderr, "Verified %lld streams of %lld integers, status = %d\n", n_streams, stream_len, status);
 
     start = clock();
     status = decode_i32(
@@ -291,7 +291,7 @@ void test_32bit(int64_t n_streams, int64_t stream_len) {
     diff = clock() - start;
     msec = diff * 1000 / CLOCKS_PER_SEC;
 
-    fprintf(stderr, "Decoded %ld streams of %ld integers, status = %d\n", n_streams, stream_len, status);
+    fprintf(stderr, "Decoded %lld streams of %lld integers, status = %d\n", n_streams, stream_len, status);
     fprintf(stderr, "  CPU time:  %d seconds %d milliseconds\n", msec / 1000, msec % 1000);
 
     start = clock();
@@ -308,7 +308,7 @@ void test_32bit(int64_t n_streams, int64_t stream_len) {
     diff = clock() - start;
     msec = diff * 1000 / CLOCKS_PER_SEC;
 
-    fprintf(stderr, "Decoded (with threads) %ld streams of %ld integers, status = %d\n", n_streams, stream_len, status);
+    fprintf(stderr, "Decoded (with threads) %lld streams of %lld integers, status = %d\n", n_streams, stream_len, status);
     fprintf(stderr, "  CPU time:  %d seconds %d milliseconds\n", msec / 1000, msec % 1000);
 
     // Verify
@@ -318,7 +318,7 @@ void test_32bit(int64_t n_streams, int64_t stream_len) {
             elem = istream * stream_len + isamp;
             if (data[elem] != decompressed[elem]) {
                 fprintf(stderr,
-                    "FAIL stream %ld, sample %ld:  %d != %d\n",
+                    "FAIL stream %lld, sample %lld:  %d != %d\n",
                     istream, isamp, decompressed[elem], data[elem]);
             }
         }
@@ -353,7 +353,7 @@ void test_32bit(int64_t n_streams, int64_t stream_len) {
         first_sample,
         last_sample
     );
-    fprintf(stderr, "Verified %ld streams with slice of %ld integers, status = %d\n", n_streams, n_decode, status);
+    fprintf(stderr, "Verified %lld streams with slice of %lld integers, status = %d\n", n_streams, n_decode, status);
 
     start = clock();
     status = decode_i32(
@@ -369,7 +369,7 @@ void test_32bit(int64_t n_streams, int64_t stream_len) {
     diff = clock() - start;
     msec = diff * 1000 / CLOCKS_PER_SEC;
 
-    fprintf(stderr, "Decoded %ld streams with slice of %ld integers, status = %d\n", n_streams, n_decode, status);
+    fprintf(stderr, "Decoded %lld streams with slice of %lld integers, status = %d\n", n_streams, n_decode, status);
     fprintf(stderr, "  CPU time:  %d seconds %d milliseconds\n", msec / 1000, msec % 1000);
 
     start = clock();
@@ -386,7 +386,7 @@ void test_32bit(int64_t n_streams, int64_t stream_len) {
     diff = clock() - start;
     msec = diff * 1000 / CLOCKS_PER_SEC;
 
-    fprintf(stderr, "Decoded (with threads) %ld streams with slice of %ld integers, status = %d\n", n_streams, n_decode, status);
+    fprintf(stderr, "Decoded (with threads) %lld streams with slice of %lld integers, status = %d\n", n_streams, n_decode, status);
     fprintf(stderr, "  CPU time:  %d seconds %d milliseconds\n", msec / 1000, msec % 1000);
 
     // Verify
@@ -398,7 +398,7 @@ void test_32bit(int64_t n_streams, int64_t stream_len) {
             output_elem = istream * n_decode + (isamp - first_sample);
             if (data[input_elem] != decompressed[output_elem]) {
                 fprintf(stderr,
-                    "FAIL stream %ld, sample %ld:  %d != %d\n",
+                    "FAIL stream %lld, sample %lld:  %d != %d\n",
                     istream, isamp, decompressed[output_elem], data[input_elem]);
             }
         }
@@ -480,7 +480,7 @@ void test_64bit(int64_t n_streams, int64_t stream_len) {
     diff = clock() - start;
     int msec = diff * 1000 / CLOCKS_PER_SEC;
 
-    fprintf(stderr, "Encoded %ld streams of %ld 64bit integers (%ld bytes) into %ld bytes, status = %d\n", n_streams, stream_len, input_bytes, n_bytes, status);
+    fprintf(stderr, "Encoded %lld streams of %lld 64bit integers (%lld bytes) into %lld bytes, status = %d\n", n_streams, stream_len, input_bytes, n_bytes, status);
     fprintf(stderr, "  CPU time:  %d seconds %d milliseconds\n", msec / 1000, msec % 1000);
 
     free(compressed);
@@ -500,7 +500,7 @@ void test_64bit(int64_t n_streams, int64_t stream_len) {
     diff = clock() - start;
     msec = diff * 1000 / CLOCKS_PER_SEC;
 
-    fprintf(stderr, "Encoded (threaded) %ld streams of %ld 64bit integers (%ld bytes) into %ld bytes, status = %d\n", n_streams, stream_len, input_bytes, n_bytes, status);
+    fprintf(stderr, "Encoded (threaded) %lld streams of %lld 64bit integers (%lld bytes) into %lld bytes, status = %d\n", n_streams, stream_len, input_bytes, n_bytes, status);
     fprintf(stderr, "  CPU time:  %d seconds %d milliseconds\n", msec / 1000, msec % 1000);
 
     // Compute stream nbytes
@@ -528,7 +528,7 @@ void test_64bit(int64_t n_streams, int64_t stream_len) {
         first_sample,
         last_sample
     );
-    fprintf(stderr, "Verified %ld streams of %ld 64bit integers, status = %d\n", n_streams, stream_len, status);
+    fprintf(stderr, "Verified %lld streams of %lld 64bit integers, status = %d\n", n_streams, stream_len, status);
 
     start = clock();
     status = decode_i64(
@@ -544,7 +544,7 @@ void test_64bit(int64_t n_streams, int64_t stream_len) {
     diff = clock() - start;
     msec = diff * 1000 / CLOCKS_PER_SEC;
 
-    fprintf(stderr, "Decoded %ld streams of %ld 64bit integers, status = %d\n", n_streams, stream_len, status);
+    fprintf(stderr, "Decoded %lld streams of %lld 64bit integers, status = %d\n", n_streams, stream_len, status);
     fprintf(stderr, "  CPU time:  %d seconds %d milliseconds\n", msec / 1000, msec % 1000);
 
     start = clock();
@@ -561,7 +561,7 @@ void test_64bit(int64_t n_streams, int64_t stream_len) {
     diff = clock() - start;
     msec = diff * 1000 / CLOCKS_PER_SEC;
 
-    fprintf(stderr, "Decoded (with threads) %ld streams of %ld 64bit integers, status = %d\n", n_streams, stream_len, status);
+    fprintf(stderr, "Decoded (with threads) %lld streams of %lld 64bit integers, status = %d\n", n_streams, stream_len, status);
     fprintf(stderr, "  CPU time:  %d seconds %d milliseconds\n", msec / 1000, msec % 1000);
 
     // Verify
@@ -573,7 +573,7 @@ void test_64bit(int64_t n_streams, int64_t stream_len) {
             elem = istream * stream_len + isamp;
             if (data[elem] != decompressed[elem]) {
                 fprintf(stderr,
-                    "FAIL stream %ld, sample %ld:  %ld != %ld\n",
+                    "FAIL stream %lld, sample %lld:  %lld != %lld\n",
                     istream, isamp, decompressed[elem], data[elem]);
                 fprintf(stderr,
                     "          out [ %d | %d ] != in [ %d | %d ]\n",
@@ -612,7 +612,7 @@ void test_64bit(int64_t n_streams, int64_t stream_len) {
         first_sample,
         last_sample
     );
-    fprintf(stderr, "Verified %ld streams with slice of %ld 64bit integers, status = %d\n", n_streams, n_decode, status);
+    fprintf(stderr, "Verified %lld streams with slice of %lld 64bit integers, status = %d\n", n_streams, n_decode, status);
 
     start = clock();
     status = decode_i64(
@@ -628,7 +628,7 @@ void test_64bit(int64_t n_streams, int64_t stream_len) {
     diff = clock() - start;
     msec = diff * 1000 / CLOCKS_PER_SEC;
 
-    fprintf(stderr, "Decoded %ld streams with slice of %ld 64bit integers, status = %d\n", n_streams, n_decode, status);
+    fprintf(stderr, "Decoded %lld streams with slice of %lld 64bit integers, status = %d\n", n_streams, n_decode, status);
     fprintf(stderr, "  CPU time:  %d seconds %d milliseconds\n", msec / 1000, msec % 1000);
 
     start = clock();
@@ -645,7 +645,7 @@ void test_64bit(int64_t n_streams, int64_t stream_len) {
     diff = clock() - start;
     msec = diff * 1000 / CLOCKS_PER_SEC;
 
-    fprintf(stderr, "Decoded (with threads) %ld streams with slice of %ld 64bit integers, status = %d\n", n_streams, n_decode, status);
+    fprintf(stderr, "Decoded (with threads) %lld streams with slice of %lld 64bit integers, status = %d\n", n_streams, n_decode, status);
     fprintf(stderr, "  CPU time:  %d seconds %d milliseconds\n", msec / 1000, msec % 1000);
 
     // Verify
@@ -657,7 +657,7 @@ void test_64bit(int64_t n_streams, int64_t stream_len) {
             output_elem = istream * n_decode + (isamp - first_sample);
             if (data[input_elem] != decompressed[output_elem]) {
                 fprintf(stderr,
-                    "FAIL stream %ld, sample %ld:  %ld != %ld\n",
+                    "FAIL stream %lld, sample %lld:  %lld != %lld\n",
                     istream, isamp, decompressed[output_elem], data[input_elem]);
             }
         }
