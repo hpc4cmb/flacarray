@@ -520,5 +520,5 @@ def read_array(
         mpi_comm=mpi_comm,
         mpi_dist=mpi_dist,
         use_threads=use_threads,
-        no_flatten=False,
+        no_flatten=no_flatten,
     )

@@ -7,7 +7,6 @@
 
 import os
 
-
-__version__ = "0.3.4"
+from ._version import __version__
 
 from .array import FlacArray

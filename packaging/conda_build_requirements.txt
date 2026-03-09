@@ -2,8 +2,8 @@ c-compiler
 pkg-config
 cmake
 cython
-meson
-meson-python
+scikit-build-core
+cython-cmake
 libflac
 h5py
 zarr

@@ -4,7 +4,7 @@
 
 import numpy as np
 
-from .libflacarray import decode_flac
+from ._libflacarray import decode_flac
 from .utils import (
     int_to_float,
     keep_select,

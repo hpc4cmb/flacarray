@@ -10,8 +10,8 @@
 #   docker exec -it <ID> /bin/bash
 #
 
-export CIBW_BUILD="cp311-manylinux_x86_64"
-export CIBW_MANYLINUX_X86_64_IMAGE="manylinux2014"
+export CIBW_BUILD="cp313-manylinux_x86_64"
+export CIBW_MANYLINUX_X86_64_IMAGE="manylinux_2_28"
 export CIBW_BUILD_VERBOSITY=3
 
 # Uncomment to leave the container for debugging

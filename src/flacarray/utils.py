@@ -10,7 +10,7 @@ from functools import wraps
 
 import numpy as np
 
-from .libflacarray import (
+from ._libflacarray import (
     wrap_float32_to_int32,
     wrap_float64_to_int64,
     wrap_int32_to_float32,
@@ -301,7 +301,7 @@ def float_to_int(data, quanta=None, precision=None):
     else:
         # Make sure it is an array
         try:
-            lquant = len(quanta)
+            lquant = len(quanta) # noqa
             # Worked. Check shape
             if quanta.shape != leading_shape:
                 msg = f"quanta array ({quanta}) has shape that does not "
