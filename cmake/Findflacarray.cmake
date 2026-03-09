@@ -10,6 +10,7 @@
 #   flacarray_FOUND                  ... true if flacarray is found on the system
 #   flacarray_LIBRARIES              ... full path to flacarray libraries
 #   flacarray_INCLUDE_DIRS           ... flacarray include directory paths
+#   flacarray_LINK_FLAGS             ... additional linking flags
 #
 # This file uses the flacarray_config script, which should be in the executable
 # search path if flacarray has been installed properly in the current environment.
@@ -71,6 +72,11 @@ else()
             OUTPUT_STRIP_TRAILING_WHITESPACE
         )
     endif()
+    execute_process(
+        COMMAND ${FLACARRAY_CONFIG} --link_flags
+        OUTPUT_VARIABLE flacarray_LINK_FLAGS
+        OUTPUT_STRIP_TRAILING_WHITESPACE
+    )
 endif()
 
 if(FLACARRAY_LIB)
@@ -85,7 +91,13 @@ find_package_handle_standard_args(flacarray
     HANDLE_COMPONENTS
 )
 
+find_package_handle_standard_args(flacarray
+    REQUIRED_VARS flacarray_LINK_FLAGS FLACARRAY_LIB
+    HANDLE_COMPONENTS
+)
+
 mark_as_advanced(
     flacarray_INCLUDE_DIRS
     flacarray_LIBRARIES
+    flacarray_LINK_FLAGS
 )

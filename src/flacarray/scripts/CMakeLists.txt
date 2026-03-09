@@ -1,6 +1,7 @@
 # Install python files
 
-set(CONF_EXTRA_LINK "${FLAC_LIBRARIES};${OpenMP_C_LIBRARIES}")
+set(CONF_EXTRA_LIBS "${FLAC_LIBRARIES}")
+set(CONF_EXTRA_FLAGS "${OpenMP_C_FLAGS}")
 
 configure_file(
     "${CMAKE_CURRENT_SOURCE_DIR}/config.py.in" # Input file path

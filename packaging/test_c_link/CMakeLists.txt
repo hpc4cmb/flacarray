@@ -20,6 +20,7 @@ find_package(flacarray REQUIRED)
 add_executable(test_c_link test.c)
 target_link_libraries(test_c_link PRIVATE ${flacarray_LIBRARIES})
 target_include_directories(test_c_link BEFORE PUBLIC ${flacarray_INCLUDE_DIRS})
+target_link_options(test_c_link PRIVATE ${flacarray_LINK_FLAGS})
 
 # Add a test that runs this executable
 add_test(

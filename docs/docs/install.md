@@ -82,12 +82,24 @@ installation. The tests are bundled in the package:
 
 ## Using From Compiled Software
 
-Flacarray ships with a low-level C library which can be linked against from compiled software.  First, install flacarray as described above.  Note that depending on how you build your compiled software, you may want to choose carefully how flacarray is installed.  For example, if you are compiling your software in a conda environment using the conda compiler toolchain, it is easiest if you install flacarray through the conda package.  If you are installing your software with the OS provided compiler, you may want to build flacarray from source with the same compiler.
+Flacarray ships with a low-level C library which can be linked against from
+compiled software. First, install flacarray as described above. Note that
+depending on how you build your compiled software, you may want to choose
+carefully how flacarray is installed. For example, if you are compiling your
+software in a conda environment using the conda compiler toolchain, it is
+easiest if you install flacarray through the conda package. If you are
+installing your software with the OS provided compiler, you may want to build
+flacarray from source with the same compiler.
 
 ### Linking to Flacarray from CMake
 
-If you are using CMake to build your software, you can copy the included `cmake/Findflacarray.cmake` file into your source tree.  This will set several environment variables that you can use for compiling and linking against flacarray.  See the example in `packaging/test_c_link` for a small package that uses this cmake macro.
+If you are using CMake to build your software, you can copy the included
+`cmake/FlacarrayConfig.cmake` file into your source tree or CMake search path.
+This will set several environment variables that you can use for compiling and
+linking against flacarray. See the example in `packaging/test_c_link` for a
+small package that uses this cmake macro.
 
 ### Other Build Systems
 
-You can use the included flacarray_config script to print out the CFLAGS / LDFLAGS / LIBS needed to link to libflacarray and find the flacarray.h header.
+You can use the included flacarray_config script to print out the CFLAGS /
+LDFLAGS / LIBS needed to link to libflacarray and find the flacarray.h header.

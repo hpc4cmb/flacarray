@@ -75,6 +75,13 @@ def cli():
         action="store_true",
         help="Print the full library paths",
     )
+    parser.add_argument(
+        "--link_flags",
+        required=False,
+        default=False,
+        action="store_true",
+        help="Print any extra linking flags (e.g. -fopenmp)",
+    )
 
     args = parser.parse_args()
 
@@ -101,19 +108,21 @@ def cli():
             libpath = os.path.join(pkg_libdir, f"libflacarray_static{static_suffix}")
         else:
             libpath = os.path.join(pkg_libdir, f"libflacarray{shared_suffix}")
-        print(f"{libpath};@CONF_EXTRA_LINK@")
+        print(f"{libpath};@CONF_EXTRA_LIBS@")
     else:
         # These options can be combined
         output = ""
         if args.cflags:
-            output = f"{output} -I{pkg_incdir}"
+            output += f" -I{pkg_incdir}"
         if args.ldflags:
-            output = f"{output} -L{pkg_libdir}"
+            output += f" -L{pkg_libdir}"
         if args.libs:
             if args.static:
-                output = f"{output} -lflacarray_static"
+                output += " -lflacarray_static"
             else:
-                output = f"{output} -lflacarray"
+                output += " -lflacarray"
+        if args.link_flags:
+            output += "@CONF_EXTRA_FLAGS@"
         if output != "":
             print(output)
         else:
