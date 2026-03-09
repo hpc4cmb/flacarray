@@ -25,8 +25,6 @@ set(libflcarr_HEADERS
 
 add_library(flcarr OBJECT ${libflcarr_SOURCES})
 
-target_compile_options(flcarr PRIVATE "${OpenMP_C_FLAGS}")
-
 target_include_directories(flcarr BEFORE PUBLIC
     "${CMAKE_CURRENT_SOURCE_DIR}/libflacarray"
 )
@@ -34,7 +32,10 @@ target_include_directories(flcarr BEFORE PUBLIC
 target_include_directories(flcarr PUBLIC "${FLAC_INCLUDE_DIRS}")
 target_link_libraries(flcarr PUBLIC "${FLAC_LIBRARIES}")
 
-target_link_libraries(flcarr PUBLIC "${OpenMP_C_LIBRARIES}")
+if(OpenMP_C_Found)
+    target_compile_options(flcarr PRIVATE "${OpenMP_C_FLAGS}")
+    target_link_libraries(flcarr PUBLIC "${OpenMP_C_LIBRARIES}")
+endif()
 
 # Create an shared library, usable by external compiled software
 
