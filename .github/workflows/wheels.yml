@@ -11,6 +11,22 @@ concurrency:
   cancel-in-progress: true
 
 jobs:
+  build_sdist:
+    name: Build source distribution
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v6
+        with:
+          persist-credentials: false
+
+      - name: Build sdist
+        run: pipx run build --sdist
+
+      - uses: actions/upload-artifact@v7
+        with:
+          name: cibw-sdist
+          path: dist/*.tar.gz
+
   build_wheels:
     name: Build wheel for cp${{ matrix.python }}-${{ matrix.builder }}_${{ matrix.arch }}
     runs-on: ${{ matrix.os }}
@@ -112,9 +128,9 @@ jobs:
         run: |
           python -m cibuildwheel --output-dir wheelhouse
 
-      - uses: actions/upload-artifact@v6
+      - uses: actions/upload-artifact@v7
         with:
-          name: flacarray-cp${{ matrix.python }}-${{ matrix.builder }}_${{ matrix.arch }}
+          name: cibw-wheels_cp${{ matrix.python }}-${{ matrix.builder }}_${{ matrix.arch }}
           path: ./wheelhouse/flacarray*cp${{ matrix.python }}-${{ matrix.builder }}*${{ matrix.arch }}*.whl
 
   upload_pypi:
@@ -124,10 +140,10 @@ jobs:
       id-token: write
     if: github.event_name == 'release' && github.event.action == 'published'
     steps:
-      - uses: actions/download-artifact@v7
+      - uses: actions/download-artifact@v8
         with:
           # Unpacks all artifacts into dist/
-          pattern: flacarray-*
+          pattern: cibw-*
           path: dist
           merge-multiple: true
 
