@@ -13,7 +13,7 @@ import zarr
 
 from .decompress import array_decompress
 from .mpi import distribute_and_verify
-from .io_common import read_send_compressed
+from .io_common import read_send_compressed, initialize_empty_buffers
 from .utils import function_timer
 
 
@@ -282,22 +282,19 @@ def read_array(
         first_samp = stream_slice.start
         last_samp = stream_slice.stop
 
-    if compressed is None:
-        arr = None
-    else:
-        arr = array_decompress(
-            compressed,
-            local_shape[-1],
-            stream_starts,
-            stream_nbytes,
-            stream_offsets=stream_offsets,
-            stream_gains=stream_gains,
-            first_stream_sample=first_samp,
-            last_stream_sample=last_samp,
-            is_int64=(n_channel == 2),
-            use_threads=use_threads,
-            no_flatten=no_flatten,
-        )
+    arr = array_decompress(
+        compressed,
+        local_shape[-1],
+        stream_starts,
+        stream_nbytes,
+        stream_offsets=stream_offsets,
+        stream_gains=stream_gains,
+        first_stream_sample=first_samp,
+        last_stream_sample=last_samp,
+        is_int64=(n_channel == 2),
+        use_threads=use_threads,
+        no_flatten=no_flatten,
+    )
     if keep_indices:
         return arr, indices
     else:

@@ -6,7 +6,7 @@ import copy
 
 import numpy as np
 
-from .compress import array_compress
+from .compress import array_compress, array_compress_empty
 from .decompress import array_decompress_slice
 from .hdf5 import write_compressed as hdf5_write_compressed
 from .hdf5 import read_compressed as hdf5_read_compressed
@@ -93,6 +93,7 @@ class FlacArray:
         if other is not None:
             # We are copying an existing object, make sure we have an
             # independent copy.
+            self._empty = copy.deepcopy(other._empty)
             self._shape = copy.deepcopy(other._shape)
             self._global_shape = copy.deepcopy(other._global_shape)
             self._compressed = copy.deepcopy(other._compressed)
@@ -107,6 +108,9 @@ class FlacArray:
         else:
             # This form of constructor is used in the class methods where we
             # have already created these arrays for use by this instance.
+            self._empty = shape is None or shape[0] == 0
+            if self._empty and mpi_comm is None:
+                raise RuntimeError("Local data is empty, and MPI is not being used")
             self._shape = shape
             self._global_shape = global_shape
             self._compressed = compressed
@@ -125,25 +129,33 @@ class FlacArray:
         # stream, this tracks the user intentions about whether to flatten the
         # leading dimension.  We also track the "local shape", with is the same,
         # but which always keeps the leading dimension.
-        if len(self._shape) == 1:
+        if self._empty:
+            # No local data
+            self._flatten_single = False
+            self._local_shape = (0,) + self._global_shape[1:]
+            self._local_nbytes = 0
+        elif len(self._shape) == 1:
             self._flatten_single = True
             self._local_shape = (1, self._shape[0])
+            self._local_nbytes = self._compressed.nbytes
         else:
             self._flatten_single = False
             self._local_shape = self._shape
+            self._local_nbytes = self._compressed.nbytes
 
-        self._local_nbytes = self._compressed.nbytes
         (
             self._global_nbytes,
             self._global_proc_nbytes,
             self._global_stream_starts,
         ) = global_bytes(self._local_nbytes, self._stream_starts, self._mpi_comm)
+
         self._leading_shape = self._local_shape[:-1]
         self._global_leading_shape = self._global_shape[:-1]
-        self._stream_size = self._local_shape[-1]
+        self._stream_size = self._global_shape[-1]
 
         # For reference, record the type string of the original data.
         self._typestr = self._dtype_str(self._dtype)
+
         # Track whether we have 32bit or 64bit data
         self._is_int64 = self._dtype == np.dtype(np.int64) or self._dtype == np.dtype(
             np.float64
@@ -351,7 +363,9 @@ class FlacArray:
 
         if self._flatten_single:
             # Our array is a single stream with flattened shape.
-            keep_slice = [0,]
+            keep_slice = [
+                0,
+            ]
         else:
             for axis, axkey in enumerate(full_key[:-1]):
                 if not isinstance(axkey, (int, np.integer)):
@@ -398,7 +412,7 @@ class FlacArray:
             if stop - start <= 0:
                 # No samples
                 return (0, 0, (0,))
-            return (start, stop, (stop-start,))
+            return (start, stop, (stop - start,))
         elif isinstance(sample_key, (int, np.integer)):
             # Just a scalar
             return (sample_key, sample_key + 1, ())
@@ -609,25 +623,45 @@ class FlacArray:
 
         """
         # Get the global shape of the array
-        global_props = global_array_properties(arr.shape, mpi_comm=mpi_comm)
+        empty_data = arr is None or arr.shape[0] == 0
+        if empty_data and mpi_comm is None:
+            raise RuntimeError("Local array is None, and MPI is not being used")
+
+        if empty_data:
+            # No data on this process
+            global_props = global_array_properties(None, None, mpi_comm=mpi_comm)
+        else:
+            global_props = global_array_properties(
+                arr.shape, arr.dtype, mpi_comm=mpi_comm
+            )
+
         global_shape = global_props["shape"]
+        dtype = global_props["dtype"]
         mpi_dist = global_props["dist"]
 
         # Compress our local piece of the array
-        compressed, starts, nbytes, offsets, gains = array_compress(
-            arr,
-            level=level,
-            quanta=quanta,
-            precision=precision,
-            use_threads=use_threads,
-        )
+        if empty_data:
+            # No data
+            arr_shape = (0,) + global_shape[1:]
+            compressed, starts, nbytes, offsets, gains = array_compress_empty(
+                global_shape, dtype, quanta, precision
+            )
+        else:
+            arr_shape = arr.shape
+            compressed, starts, nbytes, offsets, gains = array_compress(
+                arr,
+                level=level,
+                quanta=quanta,
+                precision=precision,
+                use_threads=use_threads,
+            )
 
         return FlacArray(
             None,
-            shape=arr.shape,
+            shape=arr_shape,
             global_shape=global_shape,
             compressed=compressed,
-            dtype=arr.dtype,
+            dtype=dtype,
             stream_starts=starts,
             stream_nbytes=nbytes,
             stream_offsets=offsets,

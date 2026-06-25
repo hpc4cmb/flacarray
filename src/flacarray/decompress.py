@@ -73,6 +73,22 @@ def array_decompress_slice(
         (tuple): The (output array, list of stream indices).
 
     """
+    if len(compressed) == 0:
+        # This process has no data.  Return an empty array with zero
+        # in the leading shape
+        empty_shape = stream_starts.shape + (stream_size,)
+        if stream_offsets is None:
+            if is_int64:
+                empty_dtype = np.int64
+            else:
+                empty_dtype = np.int32
+        else:
+            if is_int64:
+                empty_dtype = np.float64
+            else:
+                empty_dtype = np.float32
+        return np.zeros(empty_shape, dtype=empty_dtype), list()
+
     if first_stream_sample is None:
         first_stream_sample = -1
     if last_stream_sample is None:

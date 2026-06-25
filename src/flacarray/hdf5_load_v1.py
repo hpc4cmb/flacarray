@@ -16,6 +16,7 @@ from .io_common import (
     read_send_compressed,
     select_keep_indices,
     read_compressed_dataset_slice,
+    initialize_empty_buffers,
 )
 from .utils import function_timer
 
@@ -180,13 +181,15 @@ def read_compressed(hgrp, keep=None, mpi_comm=None, mpi_dist=None):
     mpi_dist = distribute_and_verify(mpi_comm, global_shape[0], mpi_dist=mpi_dist)
 
     # Local data buffers we will load from the file.
-    local_shape = None
-    local_starts = None
-    stream_nbytes = None
-    compressed = None
-    stream_offsets = None
-    stream_gains = None
-    keep_indices = None
+    (
+        local_shape,
+        local_starts,
+        stream_nbytes,
+        compressed,
+        stream_offsets,
+        stream_gains,
+        keep_indices,
+    ) = initialize_empty_buffers(global_shape, stream_off_dtype)
 
     if use_serial:
         # Use the common function for reading data and communicating it.
@@ -213,57 +216,59 @@ def read_compressed(hgrp, keep=None, mpi_comm=None, mpi_dist=None):
         # We are using parallel HDF5.  All processes have a handle to the dataset
         # from above, and each process reads its local slice.
         ds_range = mpi_dist[rank]
-        leading_shape = (ds_range[1] - ds_range[0],) + global_leading_shape[1:]
-        local_shape = leading_shape + (stream_size,)
+        if ds_range[1] > ds_range[0]:
+            # We have some data
+            leading_shape = (ds_range[1] - ds_range[0],) + global_leading_shape[1:]
+            local_shape = leading_shape + (stream_size,)
 
-        # The helper datasets all have the same slab definitions
-        dslc = tuple([slice(0, x) for x in leading_shape])
-        hslc = (slice(ds_range[0], ds_range[0] + leading_shape[0]),) + tuple(
-            [slice(0, x) for x in leading_shape[1:]]
-        )
+            # The helper datasets all have the same slab definitions
+            dslc = tuple([slice(0, x) for x in leading_shape])
+            hslc = (slice(ds_range[0], ds_range[0] + leading_shape[0]),) + tuple(
+                [slice(0, x) for x in leading_shape[1:]]
+            )
 
-        # If we are using the "keep" array to select streams, slice that
-        # to cover only data for this process.
-        if keep is None:
-            proc_keep = None
-        else:
-            proc_keep = keep[hslc]
+            # If we are using the "keep" array to select streams, slice that
+            # to cover only data for this process.
+            if keep is None:
+                proc_keep = None
+            else:
+                proc_keep = keep[hslc]
 
-        # Stream starts
-        raw_starts = np.empty(leading_shape, dtype=dstarts.dtype)
-        dstarts.read_direct(raw_starts, hslc, dslc)
+            # Stream starts
+            raw_starts = np.empty(leading_shape, dtype=dstarts.dtype)
+            dstarts.read_direct(raw_starts, hslc, dslc)
 
-        # Stream nbytes
-        raw_nbytes = np.empty(leading_shape, dtype=dstarts.dtype)
-        dbytes.read_direct(raw_nbytes, hslc, dslc)
+            # Stream nbytes
+            raw_nbytes = np.empty(leading_shape, dtype=dstarts.dtype)
+            dbytes.read_direct(raw_nbytes, hslc, dslc)
 
-        # Offsets and gains for type conversions
-        raw_offsets = None
-        if dsoff is not None:
-            raw_offsets = np.empty(leading_shape, dtype=stream_off_dtype)
-            dsoff.read_direct(raw_offsets, hslc, dslc)
-        raw_gains = None
-        if dsgain is not None:
-            raw_gains = np.empty(leading_shape, dtype=stream_gain_dtype)
-            dsgain.read_direct(raw_gains, hslc, dslc)
+            # Offsets and gains for type conversions
+            raw_offsets = None
+            if dsoff is not None:
+                raw_offsets = np.empty(leading_shape, dtype=stream_off_dtype)
+                dsoff.read_direct(raw_offsets, hslc, dslc)
+            raw_gains = None
+            if dsgain is not None:
+                raw_gains = np.empty(leading_shape, dtype=stream_gain_dtype)
+                dsgain.read_direct(raw_gains, hslc, dslc)
 
-        # Compressed bytes.  Apply our stream selection and load just those
-        # streams we are keeping for this process.
-        compressed, local_starts, keep_indices = read_compressed_dataset_slice(
-            dcomp, proc_keep, raw_starts, raw_nbytes
-        )
+            # Compressed bytes.  Apply our stream selection and load just those
+            # streams we are keeping for this process.
+            compressed, local_starts, keep_indices = read_compressed_dataset_slice(
+                dcomp, proc_keep, raw_starts, raw_nbytes
+            )
 
-        # Cut our other arrays to only include the indices selected by the keep mask.
-        stream_nbytes = select_keep_indices(raw_nbytes, keep_indices)
-        stream_offsets = select_keep_indices(raw_offsets, keep_indices)
-        stream_gains = select_keep_indices(raw_gains, keep_indices)
+            # Cut our other arrays to only include the indices selected by the keep
+            # mask.
+            stream_nbytes = select_keep_indices(raw_nbytes, keep_indices)
+            stream_offsets = select_keep_indices(raw_offsets, keep_indices)
+            stream_gains = select_keep_indices(raw_gains, keep_indices)
 
-        if local_starts is None:
-            # This rank has no data after masking
-            local_shape = None
-        else:
-            local_shape = local_starts.shape + (stream_size,)
-
+            if local_starts is None:
+                # This rank has no data after masking
+                local_shape = None
+            else:
+                local_shape = local_starts.shape + (stream_size,)
     return (
         local_shape,
         global_shape,
@@ -356,22 +361,19 @@ def read_array(
         first_samp = stream_slice.start
         last_samp = stream_slice.stop
 
-    if compressed is None:
-        arr = None
-    else:
-        arr = array_decompress(
-            compressed,
-            local_shape[-1],
-            stream_starts,
-            stream_nbytes,
-            stream_offsets=stream_offsets,
-            stream_gains=stream_gains,
-            first_stream_sample=first_samp,
-            last_stream_sample=last_samp,
-            is_int64=(n_channel == 2),
-            use_threads=use_threads,
-            no_flatten=no_flatten,
-        )
+    arr = array_decompress(
+        compressed,
+        local_shape[-1],
+        stream_starts,
+        stream_nbytes,
+        stream_offsets=stream_offsets,
+        stream_gains=stream_gains,
+        first_stream_sample=first_samp,
+        last_stream_sample=last_samp,
+        is_int64=(n_channel == 2),
+        use_threads=use_threads,
+        no_flatten=no_flatten,
+    )
     if keep_indices:
         return arr, indices
     else:

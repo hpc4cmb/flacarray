@@ -68,10 +68,6 @@ def distribute_and_verify(mpi_comm, n_elem, mpi_dist=None):
                 raise RuntimeError(
                     "mpi_dist must have contiguous ranges of first, last (exclusive)"
                 )
-            if mpi_dist[proc][1] <= mpi_dist[proc][0]:
-                raise RuntimeError(
-                    f"mpi_dist has no data for process {proc}"
-                )
         # Everything checks out
         return mpi_dist
     else:
@@ -90,16 +86,19 @@ def distribute_and_verify(mpi_comm, n_elem, mpi_dist=None):
             return [(x[0], x[-1] + 1) for x in chunks]
 
 
-def global_array_properties(local_shape, mpi_comm):
+def global_array_properties(local_shape, local_dtype, mpi_comm):
     """Compute various properties of the global data distribution.
 
     Given the local data properties on each process and the MPI communicator,
-    compute various useful quantities for working with global data.
+    compute various useful quantities for working with global data.  If `local_shape`
+    is None or has a leading zero, then that means that current process has no data
+    in the global array.
 
     This function also verifies that non-leading dimensions match across all processes.
 
     Args:
         local_shape (tuple):  The local data shape on each process.
+        local_dtype (np.dtype):  The dtype of the local data.
         mpi_comm (MPI.Comm):  The MPI communicator or None.
 
     Returns:
@@ -111,39 +110,60 @@ def global_array_properties(local_shape, mpi_comm):
         if len(local_shape) == 1:
             # Just one stream
             props["shape"] = (1, local_shape[0])
+            props["dtype"] = np.dtype(local_dtype)
             props["dist"] = [(0, 1)]
         else:
             props["shape"] = local_shape
+            props["dtype"] = np.dtype(local_dtype)
             props["dist"] = [(0, local_shape[0])]
         return props
+    all_dtypes = mpi_comm.gather(local_dtype, root=0)
     all_shapes = mpi_comm.gather(local_shape, root=0)
     err = False
     if mpi_comm.rank == 0:
-        dist = list()
-        shp = all_shapes[0]
-        if len(shp) == 1:
-            lda = 1
-            trl = shp
-        else:
-            lda = shp[0]
-            trl = shp[1:]
-        dist.append((0, lda))
-        ldoff = lda
-        for s in all_shapes[1:]:
-            if len(s) == 1:
-                lda += 1
-                dist.append((ldoff, ldoff + 1))
-                ldoff += 1
-                if s != trl:
-                    err = True
-                    break
+        global_dtype = None
+        for iproc, proc_dtype in enumerate(all_dtypes):
+            if global_dtype is None and proc_dtype is not None:
+                global_dtype = proc_dtype
             else:
-                lda += s[0]
-                dist.append((ldoff, ldoff + s[0]))
-                ldoff += s[0]
-                if s[1:] != trl:
-                    err = True
-                    break
+                if proc_dtype is not None and proc_dtype != global_dtype:
+                    msg = f"Process {iproc} has dtype '{proc_dtype}'"
+                    msg += f" instead of '{global_dtype}'"
+                    raise RuntimeError(msg)
+        props["dtype"] = global_dtype
+        dist = list()
+        lda = None
+        trl = None
+        ldoff = 0
+        for shp in all_shapes:
+            if shp is None or shp[0] == 0:
+                # This process has no data
+                dist.append((ldoff, ldoff))
+            else:
+                if len(shp) == 1:
+                    if lda is None:
+                        lda = 1
+                    else:
+                        lda += 1
+                    dist.append((ldoff, ldoff + 1))
+                    ldoff += 1
+                    if trl is None:
+                        trl = shp
+                    elif shp != trl:
+                        err = True
+                        break
+                else:
+                    if lda is None:
+                        lda = shp[0]
+                    else:
+                        lda += shp[0]
+                    dist.append((ldoff, ldoff + shp[0]))
+                    ldoff += shp[0]
+                    if trl is None:
+                        trl = shp[1:]
+                    elif shp[1:] != trl:
+                        err = True
+                        break
         props["shape"] = (lda,) + trl
         props["dist"] = dist
     err = mpi_comm.bcast(err, root=0)

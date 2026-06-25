@@ -37,8 +37,9 @@ def create_fake_data(
         rank = comm.rank
 
     # Get the global array properties
-    gprops = global_array_properties(local_shape, comm)
+    gprops = global_array_properties(local_shape, dtype, comm)
     shape = gprops["shape"]
+    dtype = gprops["dtype"]
     mpi_dist = gprops["dist"]
 
     flatshape = np.prod(shape)
@@ -99,18 +100,19 @@ def create_fake_data(
         global_data = comm.bcast(global_data, root=0)
 
     # Extract our local piece of the global data
-    if len(leading_shape) == 0 or (len(leading_shape) == 1 and leading_shape[0] == 1):
-        data = global_data
+    local_start = mpi_dist[rank][0]
+    local_stop = mpi_dist[rank][1]
+    if local_start == local_stop:
+        # This process has no data
+        empty_shape = (0,) + shape[1:]
+        data = np.zeros(empty_shape, dtype=dtype)
     else:
-        local_start = mpi_dist[rank][0]
-        local_stop = mpi_dist[rank][1]
         local_slice = [slice(local_start, local_stop, 1)]
         local_slice.extend([slice(None) for x in shape[1:]])
         local_slice = tuple(local_slice)
         data = global_data[local_slice]
-    if len(data.shape) == 2 and data.shape[0] == 1:
-        data = data.reshape((-1))
-
+        if len(data.shape) == 2 and data.shape[0] == 1:
+            data = data.reshape((-1))
     return data, mpi_dist
 
 
