@@ -173,11 +173,11 @@ class ZarrTest(unittest.TestCase):
         if not have_zarr:
             print("zarr not available, skipping tests", flush=True)
             return
-        if self.comm is None:
-            rank = 0
-        else:
-            rank = self.comm.rank
+        if self.comm is None or self.comm.size < 2:
+            print("Less than 2 processes, skipping MPI test with empty procs")
+            return
 
+        rank = self.comm.rank
         tmpdir = None
         tmppath = None
         if rank == 0:
