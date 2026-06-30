@@ -363,9 +363,7 @@ class FlacArray:
 
         if self._flatten_single:
             # Our array is a single stream with flattened shape.
-            keep_slice = [
-                0,
-            ]
+            keep_slice = [0]
         else:
             for axis, axkey in enumerate(full_key[:-1]):
                 if not isinstance(axkey, (int, np.integer)):

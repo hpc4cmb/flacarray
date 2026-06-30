@@ -302,6 +302,11 @@ def write_compressed(
             ),
         ) + tuple([slice(0, x) for x in aux_local_shape[1:]])
 
+        # Each call to the HDF5 Dataset.collective context manager creates a
+        # region of synchronous operations on the dataset.  Even processes with
+        # no data for a given dataset must enter this to avoid a deadlock.
+        # However, only processes with local data will write.
+
         with dstarts.collective:
             if len(compressed) > 0:
                 dstarts.write_direct(global_stream_starts, dslc, hslc)

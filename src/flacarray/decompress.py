@@ -78,11 +78,13 @@ def array_decompress_slice(
         # in the leading shape
         empty_shape = stream_starts.shape + (stream_size,)
         if stream_offsets is None:
+            # This means the output array will contain integer data
             if is_int64:
                 empty_dtype = np.int64
             else:
                 empty_dtype = np.int32
         else:
+            # The output array will contain floating point data.
             if is_int64:
                 empty_dtype = np.float64
             else:
