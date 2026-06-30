@@ -21,7 +21,7 @@ except ImportError:
     have_zarr = False
 
 from . import __version__ as flacarray_version
-from .compress import array_compress
+from .compress import array_compress, array_compress_empty
 from .io_common import receive_write_compressed
 from .mpi import global_array_properties, global_bytes
 from .utils import function_timer
@@ -345,8 +345,21 @@ def write_array(
         raise RuntimeError("zarr is not importable, cannot write to zarr.Group")
 
     # Get the global shape of the array
-    global_props = global_array_properties(arr.shape, mpi_comm=mpi_comm)
+    empty_data = arr is None or arr.shape[0] == 0
+    if empty_data and mpi_comm is None:
+        raise RuntimeError("Local array is None, and MPI is not being used")
+
+    if empty_data:
+        # No data on this process
+        arr_shape = None
+        arr_dtype = None
+    else:
+        arr_shape = arr.shape
+        arr_dtype = arr.dtype
+
+    global_props = global_array_properties(arr_shape, arr_dtype, mpi_comm=mpi_comm)
     global_shape = global_props["shape"]
+    dtype = global_props["dtype"]
     mpi_dist = global_props["dist"]
 
     # Get the number of channels
@@ -355,22 +368,31 @@ def write_array(
     else:
         n_channels = 1
 
+    stream_size = global_shape[-1]
+    global_leading_shape = global_shape[:-1]
+
     # Compress our local piece of the array
-    compressed, starts, nbytes, offsets, gains = array_compress(
-        arr, level=level, quanta=quanta, precision=precision, use_threads=use_threads
-    )
+    if empty_data:
+        compressed, starts, nbytes, offsets, gains = array_compress_empty(
+            global_shape, dtype, quanta, precision
+        )
+        if len(global_leading_shape[1:]) == 0:
+            leading_shape = (0,)
+        else:
+            leading_shape = (0,) + global_leading_shape[1:]
+    else:
+        compressed, starts, nbytes, offsets, gains = array_compress(
+            arr, level=level, quanta=quanta, precision=precision, use_threads=use_threads
+        )
+        if len(arr.shape) == 1:
+            leading_shape = (1,)
+        else:
+            leading_shape = arr.shape[:-1]
 
     local_nbytes = compressed.nbytes
     global_nbytes, global_proc_bytes, global_starts = global_bytes(
         local_nbytes, starts, mpi_comm
     )
-    stream_size = arr.shape[-1]
-
-    if len(arr.shape) == 1:
-        leading_shape = (1,)
-    else:
-        leading_shape = arr.shape[:-1]
-    global_leading_shape = global_shape[:-1]
 
     write_compressed(
         zgrp,

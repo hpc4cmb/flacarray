@@ -55,7 +55,8 @@ def read_compressed_dataset_slice(dcomp, keep, stream_starts, stream_nbytes):
         # do multiple reads to fill sections of that buffer.
         starts, nbytes, indices = keep_select(keep, stream_starts, stream_nbytes)
         if len(starts) == 0:
-            return (None, None, None)
+            # All data cut by keep mask
+            return (np.zeros(0, dtype=np.uint8), np.zeros(0, dtype=np.int64), None)
         total_bytes = np.sum(nbytes)
         rel_starts = np.zeros_like(starts)
         rel_starts[1:] = np.cumsum(nbytes)[:-1]
@@ -259,6 +260,43 @@ def receive_proc_buffers(
     )
 
 
+def initialize_empty_buffers(global_shape, offset_dtype):
+    """Initialize common arrays and shapes for processes with no data.
+
+    Args:
+        global_shape (tuple):  Global shape of the uncompressed array.
+        offset_dtype (np.dtype):  The dtype of the offset array or None.
+
+    Returns:
+        (tuple):  The empty data and metadata
+
+    """
+    leading_shape = global_shape[:-1]
+    if len(leading_shape[1:]) == 0:
+        empty_starts_shape = (0,)
+    else:
+        empty_starts_shape = (0,) + leading_shape[1:]
+    local_shape = (0,) + global_shape[1:]
+    local_starts = np.zeros(empty_starts_shape, dtype=np.int64)
+    stream_nbytes = np.zeros(empty_starts_shape, dtype=np.int64)
+    compressed = np.zeros(0, dtype=np.uint8)
+    stream_offsets = None
+    stream_gains = None
+    if offset_dtype is not None:
+        stream_offsets = np.zeros(empty_starts_shape, dtype=offset_dtype)
+        stream_gains = np.zeros(empty_starts_shape, dtype=offset_dtype)
+    keep_indices = None
+    return (
+        local_shape,
+        local_starts,
+        stream_nbytes,
+        compressed,
+        stream_offsets,
+        stream_gains,
+        keep_indices,
+    )
+
+
 @function_timer
 def read_send_compressed(
     reader, global_shape, n_channel, keep=None, mpi_comm=None, mpi_dist=None
@@ -297,14 +335,6 @@ def read_send_compressed(
     global_leading_shape = global_shape[:-1]
     stream_size = global_shape[-1]
 
-    local_shape = None
-    local_starts = None
-    stream_nbytes = None
-    compressed = None
-    stream_offsets = None
-    stream_gains = None
-    keep_indices = None
-
     is_64bit = False
     if n_channel == 2:
         is_64bit = True
@@ -329,12 +359,26 @@ def read_send_compressed(
                     "Reader offsets / gains are float64, but n_channel != 2"
                 )
 
+    # Initialize to default values for processes with no data.
+    (
+        local_shape,
+        local_starts,
+        stream_nbytes,
+        compressed,
+        stream_offsets,
+        stream_gains,
+        keep_indices,
+    ) = initialize_empty_buffers(global_shape, reader.stream_off_dtype)
+
     # One process reads and sends.
     # The rank zero process will read data and send to the other
     # processes.  Keep a handle to the asynchronous send buffers
     # and delete them after the sends are complete.
     for proc in range(nproc):
         if rank == 0:
+            if mpi_dist[proc][0] == mpi_dist[proc][1]:
+                # No data on this process
+                continue
             (
                 proc_shape,
                 proc_keep,
@@ -371,21 +415,25 @@ def read_send_compressed(
                     proc_gains,
                 )
         elif proc == rank:
-            (
-                local_shape,
-                keep_indices,
-                local_starts,
-                stream_nbytes,
-                compressed,
-                stream_offsets,
-                stream_gains,
-            ) = receive_proc_buffers(
-                comm,
-                proc,
-                stream_size,
-                is_64bit=is_64bit,
-                offsetgain=offsets_and_gains,
-            )
+            if mpi_dist[proc][0] == mpi_dist[proc][1]:
+                # No data on this process
+                continue
+            else:
+                (
+                    local_shape,
+                    keep_indices,
+                    local_starts,
+                    stream_nbytes,
+                    compressed,
+                    stream_offsets,
+                    stream_gains,
+                ) = receive_proc_buffers(
+                    comm,
+                    proc,
+                    stream_size,
+                    is_64bit=is_64bit,
+                    offsetgain=offsets_and_gains,
+                )
 
     return (
         local_shape,
@@ -481,7 +529,11 @@ def receive_write_compressed(
             # and write it into the global datasets.  For each dataset we build
             # the "slab" (tuple of slices) that we will write from the array
             # in memory and to the HDF5 dataset.
-            #
+
+            if global_process_nbytes[proc] == 0:
+                # This process has no data
+                continue
+
             # The range of the leading dimension on this process.
             recv_range = mpi_dist[proc]
             recv_leading_shape = (
@@ -573,9 +625,8 @@ def receive_write_compressed(
             del recv
         elif proc == rank:
             # We are sending.
-            send_range = mpi_dist[proc]
-            if send_range[1] - send_range[0] == 0:
-                # We have no data
+            if global_process_nbytes[proc] == 0:
+                # This process has no data
                 continue
             comm.Send(writer.starts.astype(np.int64), dest=0, tag=tag_starts)
             comm.Send(writer.nbytes.astype(np.int64), dest=0, tag=tag_nbytes)

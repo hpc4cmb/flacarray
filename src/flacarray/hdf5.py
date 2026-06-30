@@ -9,12 +9,13 @@ format, but the `read_hdf5` function can read the current and past
 versions.
 
 """
+
 import importlib
 
 import numpy as np
 
 from . import __version__ as flacarray_version
-from .compress import array_compress
+from .compress import array_compress, array_compress_empty
 from .hdf5_utils import have_hdf5, hdf5_use_serial, check_dataset_buffer_size
 from .io_common import receive_write_compressed
 from .mpi import global_array_properties, global_bytes
@@ -246,18 +247,32 @@ def write_compressed(
 
     if use_serial:
         # Use the common writing function
-        writer = WriterHDF5(
-            global_stream_starts.reshape(aux_local_shape),
-            stream_nbytes.reshape(aux_local_shape),
-            compressed,
-            stream_offsets,
-            stream_gains,
-            dstarts,
-            dbytes,
-            dcomp,
-            dsoff,
-            dsgain,
-        )
+        if len(compressed) == 0:
+            writer = WriterHDF5(
+                global_stream_starts,
+                stream_nbytes,
+                compressed,
+                stream_offsets,
+                stream_gains,
+                dstarts,
+                dbytes,
+                dcomp,
+                dsoff,
+                dsgain,
+            )
+        else:
+            writer = WriterHDF5(
+                global_stream_starts.reshape(aux_local_shape),
+                stream_nbytes.reshape(aux_local_shape),
+                compressed,
+                stream_offsets,
+                stream_gains,
+                dstarts,
+                dbytes,
+                dcomp,
+                dsoff,
+                dsgain,
+            )
         receive_write_compressed(
             writer,
             global_leading_shape,
@@ -287,17 +302,28 @@ def write_compressed(
             ),
         ) + tuple([slice(0, x) for x in aux_local_shape[1:]])
 
+        # Each call to the HDF5 Dataset.collective context manager creates a
+        # region of synchronous operations on the dataset.  Even processes with
+        # no data for a given dataset must enter this to avoid a deadlock.
+        # However, only processes with local data will write.
+
         with dstarts.collective:
-            dstarts.write_direct(global_stream_starts, dslc, hslc)
+            if len(compressed) > 0:
+                dstarts.write_direct(global_stream_starts, dslc, hslc)
+
         with dbytes.collective:
-            dbytes.write_direct(stream_nbytes, dslc, hslc)
+            if len(compressed) > 0:
+                dbytes.write_direct(stream_nbytes, dslc, hslc)
 
         if stream_offsets is not None:
             with dsoff.collective:
-                dsoff.write_direct(stream_offsets, dslc, hslc)
+                if len(compressed) > 0:
+                    dsoff.write_direct(stream_offsets, dslc, hslc)
+
         if stream_gains is not None:
             with dsgain.collective:
-                dsgain.write_direct(stream_gains, dslc, hslc)
+                if len(compressed) > 0:
+                    dsgain.write_direct(stream_gains, dslc, hslc)
 
         dslc = (slice(0, global_process_nbytes[rank]),)
         hslc = (slice(comp_doff[rank], comp_doff[rank] + global_process_nbytes[rank]),)
@@ -305,7 +331,8 @@ def write_compressed(
             "Parallel write of compressed data", dslc, np.uint8, True
         )
         with dcomp.collective:
-            dcomp.write_direct(compressed, dslc, hslc)
+            if len(compressed) > 0:
+                dcomp.write_direct(compressed, dslc, hslc)
 
 
 @function_timer
@@ -349,32 +376,58 @@ def write_array(
         raise RuntimeError("h5py is not importable, cannot write to HDF5")
 
     # Get the global shape of the array
-    global_props = global_array_properties(arr.shape, mpi_comm=mpi_comm)
+    empty_data = arr is None or arr.shape[0] == 0
+    if empty_data and mpi_comm is None:
+        raise RuntimeError("Local array is None, and MPI is not being used")
+
+    if empty_data:
+        # No data on this process
+        arr_shape = None
+        arr_dtype = None
+    else:
+        arr_shape = arr.shape
+        arr_dtype = arr.dtype
+
+    global_props = global_array_properties(arr_shape, arr_dtype, mpi_comm=mpi_comm)
     global_shape = global_props["shape"]
+    dtype = global_props["dtype"]
     mpi_dist = global_props["dist"]
 
     # Get the number of channels
-    if arr.dtype == np.dtype(np.int64) or arr.dtype == np.dtype(np.float64):
+    if dtype == np.dtype(np.int64) or dtype == np.dtype(np.float64):
         n_channels = 2
     else:
         n_channels = 1
 
+    stream_size = global_shape[-1]
+    global_leading_shape = global_shape[:-1]
+
     # Compress our local piece of the array
-    compressed, starts, nbytes, offsets, gains = array_compress(
-        arr, level=level, quanta=quanta, precision=precision, use_threads=use_threads
-    )
+    if empty_data:
+        compressed, starts, nbytes, offsets, gains = array_compress_empty(
+            global_shape, dtype, quanta, precision
+        )
+        if len(global_leading_shape[1:]) == 0:
+            leading_shape = (0,)
+        else:
+            leading_shape = (0,) + global_leading_shape[1:]
+    else:
+        compressed, starts, nbytes, offsets, gains = array_compress(
+            arr,
+            level=level,
+            quanta=quanta,
+            precision=precision,
+            use_threads=use_threads,
+        )
+        if len(arr.shape) == 1:
+            leading_shape = (1,)
+        else:
+            leading_shape = arr.shape[:-1]
 
     local_nbytes = compressed.nbytes
     global_nbytes, global_proc_bytes, global_starts = global_bytes(
         local_nbytes, starts, mpi_comm
     )
-    stream_size = arr.shape[-1]
-
-    if len(arr.shape) == 1:
-        leading_shape = (1,)
-    else:
-        leading_shape = arr.shape[:-1]
-    global_leading_shape = global_shape[:-1]
 
     write_compressed(
         hgrp,

@@ -82,3 +82,38 @@ def array_compress(arr, level=5, quanta=None, precision=None, use_threads=False)
         return (compressed, starts, nbytes, None, None)
     else:
         raise ValueError(f"Unsupported data type '{arr.dtype}'")
+
+
+def array_compress_empty(global_shape, dtype, quanta, precision):
+    """Mock the compressed data parameters for processes with no data.
+
+    When using MPI, some processes may have no local data.  This helper function
+    returns the equivalent parameters for those processes which cannot call
+    `array_compress()`.
+
+    Args:
+        global_shape (tuple):  The shape of the global data
+        dtype (np.dtype):  The array dtype
+        quanta (array):  The quanta values (only checked for None)
+        precision (array):  The precision (only check for None)
+
+    Returns:
+        (tuple): The (compressed bytes, stream starts, stream_nbytes, stream offsets,
+            stream gains)
+
+    """
+    leading_shape = global_shape[:-1]
+    compressed = np.zeros(0, dtype=np.uint8)
+    if len(leading_shape[1:]) == 0:
+        starts_shape = (0,)
+    else:
+        starts_shape = (0,) + leading_shape[1:]
+    starts = np.zeros(starts_shape, dtype=np.int64)
+    nbytes = np.zeros(starts_shape, dtype=np.int64)
+    if quanta is None and precision is None:
+        offsets = None
+        gains = None
+    else:
+        offsets = np.zeros(starts_shape, dtype=dtype)
+        gains = np.zeros(starts_shape, dtype=dtype)
+    return (compressed, starts, nbytes, offsets, gains)
